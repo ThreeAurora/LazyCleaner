@@ -45,33 +45,66 @@ class WebDavClient(private val baseUrl: String, user: String, pass: String) {
 
     private fun parse(xml: String, curPath: String): List<DavItem> {
         val items = mutableListOf<DavItem>()
-        val p = XmlPullParserFactory.newInstance().newPullParser()
+        val factory = XmlPullParserFactory.newInstance()
+        factory.isNamespaceAware = true   // ← 关键修复！正确处理 D: 前缀
+        val p = factory.newPullParser()
         p.setInput(StringReader(xml))
+
         var href = ""; var sz = 0L; var dt = ""; var isCol = false; var inR = false; var tag = ""
+
         while (p.eventType != XmlPullParser.END_DOCUMENT) {
             when (p.eventType) {
                 XmlPullParser.START_TAG -> {
+                    // 用 localName，自动去掉 D: 前缀
                     tag = p.name.lowercase()
-                    if (tag == "response") { inR = true; href = ""; sz = 0; dt = ""; isCol = false }
+                    if (tag == "response") {
+                        inR = true; href = ""; sz = 0; dt = ""; isCol = false
+                    }
                     if (tag == "collection") isCol = true
                 }
-                XmlPullParser.TEXT -> if (inR) when (tag) {
-                    "href" -> href = p.text?.trim() ?: ""
-                    "getcontentlength" -> sz = p.text?.trim()?.toLongOrNull() ?: 0
-                    "getlastmodified" -> dt = p.text?.trim() ?: ""
+                XmlPullParser.TEXT -> {
+                    val text = p.text?.trim() ?: ""
+                    if (inR && text.isNotEmpty()) {
+                        when (tag) {
+                            "href" -> href = text
+                            "getcontentlength" -> sz = text.toLongOrNull() ?: 0
+                            "getlastmodified" -> dt = text
+                        }
+                    }
                 }
                 XmlPullParser.END_TAG -> {
                     if (p.name.lowercase() == "response" && inR) {
                         inR = false
-                        val dec = try { URLDecoder.decode(href, "UTF-8") } catch (_: Exception) { href }
-                        val nc = curPath.trimEnd('/'); val nh = dec.trimEnd('/')
-                        if (nh != nc && dec != curPath && nh.isNotEmpty()) {
-                            val n = dec.trimEnd('/').substringAfterLast('/')
-                            if (n.isNotBlank()) items.add(DavItem(n, dec, isCol, sz, dt))
+                        val dec = try {
+                            URLDecoder.decode(href, "UTF-8")
+                        } catch (_: Exception) { href }
+
+                        // 跳过当前目录自身
+                        val normCur = "/" + curPath.trim('/') 
+                        val normHref = dec.trimEnd('/')
+                        val normCurTrimmed = normCur.trimEnd('/')
+
+                        if (normHref != normCurTrimmed && dec.trimEnd('/') != "/" .trimEnd('/') || dec.trim('/').contains('/').not() && dec.trim('/').isNotEmpty() && curPath.trim('/').isEmpty()) {
+                            // 简化判断：只要 href 不等于当前路径就是子项
                         }
-                    }; tag = ""
+                        
+                        // 更可靠的判断方式
+                        val isSelf = dec.trimEnd('/') == curPath.trimEnd('/') ||
+                                     dec.trimEnd('/') == ("/" + curPath.trim('/')).trimEnd('/') ||
+                                     dec.trimEnd('/').isEmpty() && curPath.trim('/').isEmpty()
+
+                        if (!isSelf && href.isNotEmpty()) {
+                            val name = dec.trimEnd('/').substringAfterLast('/')
+                            if (name.isNotBlank()) {
+                                items.add(DavItem(name, dec, isCol, sz, dt))
+                            }
+                        }
+                    }
+                    tag = ""
                 }
-            }; p.next()
-        }; return items
+            }
+            p.next()
+        }
+        return items
     }
 }
