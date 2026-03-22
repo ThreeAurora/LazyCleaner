@@ -523,7 +523,9 @@ fun ViewerPage(
 
         // ===== 手势层 =====
         Box(
-            Modifier.fillMaxSize().pointerInput(idx, cur.isVideo, scale) {
+            Modifier.fillMaxWidth()
+                .then(if (cur.isVideo) Modifier.fillMaxHeight(0.85f) else Modifier.fillMaxHeight())
+                .pointerInput(idx, cur.isVideo, scale) {
                 // 自定义手势识别：区分点击和滑动
                 awaitPointerEventScope {
                     while (true) {
@@ -667,7 +669,7 @@ fun VPlayer(
         factory = { c ->
             PlayerView(c).apply {
                 this.player = player
-                useController = false   // ← 无覆盖层！
+                useController = true
             }
         },
         update = { view ->
