@@ -31,5 +31,9 @@ class Settings(context: Context) {
     var showHidden: Boolean
         get() = sp.getBoolean("sh", false)
         set(v) = sp.edit().putBoolean("sh", v).apply()
+    // grid / list / waterfall
+    var viewMode: String
+        get() = sp.getString("vm", "grid") ?: "grid"
+        set(v) = sp.edit().putString("vm", v).apply()
     fun isConfigured() = serverUrl.isNotBlank()
 }
