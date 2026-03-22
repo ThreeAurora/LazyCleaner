@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- 文件夹主体 -->
+    <path
+        android:fillColor="#4fc3f7"
+        android:pathData="M28,36 L28,30 Q28,27 31,27 L43,27 L47,31 L77,31 Q80,31 80,34 L80,72 Q80,75 77,75 L31,75 Q28,75 28,72 Z" />
+
+    <!-- 文件夹顶部折叠 -->
+    <path
+        android:fillColor="#29b6f6"
+        android:pathData="M28,36 L80,36 L80,34 Q80,31 77,31 L47,31 L43,27 L31,27 Q28,27 28,30 Z" />
+
+    <!-- 播放三角 -->
+    <path
+        android:fillColor="#ffffff"
+        android:pathData="M48,46 L48,66 L64,56 Z" />
+
+    <!-- 云朵装饰 -->
+    <path
+        android:fillColor="#80ffffff"
+        android:pathData="M62,42 Q62,38 66,38 Q70,36 73,39 Q77,39 77,42 Q77,45 73,45 L65,45 Q62,45 62,42 Z" />
+</vector>
