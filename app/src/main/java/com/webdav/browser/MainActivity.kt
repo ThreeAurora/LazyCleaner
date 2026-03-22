@@ -149,7 +149,7 @@ fun AppRoot(settings: Settings) {
 
         Screen.VIEWER -> {
             BackHandler { screen = Screen.BROWSER; load(curPath) }
-            ViewerPage(media, viewIdx, client!!, settings, curPath,
+            ViewerPage(media, viewIdx, client!!, settings,
                 onBack = { screen = Screen.BROWSER; load(curPath) },
                 onDel = { d ->
                     items = items.filter { it.href != d.href }
@@ -322,7 +322,7 @@ fun IBtn(t: String, onClick: () -> Unit) {
 @Composable
 fun ViewerPage(
     items: List<DavItem>, startIdx: Int, client: WebDavClient, settings: Settings,
-    currentPath: String, onBack: () -> Unit, onDel: (DavItem) -> Unit
+    onBack: () -> Unit, onDel: (DavItem) -> Unit
 ) {
     var idx by remember { mutableStateOf(startIdx.coerceIn(0, (items.size - 1).coerceAtLeast(0))) }
     var local by remember { mutableStateOf(items.toList()) }
@@ -366,7 +366,7 @@ fun ViewerPage(
             title = { Text("移到回收站") },
             text = { Text("将 ${cur.name} 移到回收站？") },
             confirmButton = {
-                TextButton({ showDlg = false; doDelete() }) { Text("移到回收站", color = Color.Red) }
+                TextButton({ showDlg = false; doDelete() }) { Text("确定", color = Color.Red) }
             },
             dismissButton = { TextButton({ showDlg = false }) { Text("取消") } }
         )
@@ -405,6 +405,7 @@ fun ViewerPage(
             }
         }
 
+        // 左右点击切换（仅未缩放时）
         if (scale <= 1.05f) {
             Row(Modifier.fillMaxSize()) {
                 Box(Modifier.weight(0.4f).fillMaxHeight().clickable(
@@ -417,6 +418,7 @@ fun ViewerPage(
             }
         }
 
+        // 顶部信息
         Row(
             Modifier.align(Alignment.TopCenter).fillMaxWidth()
                 .background(Color(0x99000000)).padding(8.dp),
@@ -427,11 +429,13 @@ fun ViewerPage(
                 color = Color.White, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
 
+        // 返回
         Text("✕", color = Color.White, fontSize = 18.sp,
             modifier = Modifier.align(Alignment.TopStart).padding(8.dp)
                 .clip(RoundedCornerShape(8.dp)).background(Color(0xAA333333))
                 .clickable { onBack() }.padding(horizontal = 14.dp, vertical = 8.dp))
 
+        // 缩放提示
         if (scale > 1.05f) {
             Text("${(scale * 100).toInt()}%  双击复原",
                 color = Color(0xAAFFFFFF), fontSize = 11.sp,
@@ -440,6 +444,7 @@ fun ViewerPage(
                     .padding(horizontal = 10.dp, vertical = 4.dp))
         }
 
+        // 删除按钮
         val al = when (settings.deleteButtonPos) {
             "top-left" -> Alignment.TopStart; "top-right" -> Alignment.TopEnd
             "bottom-left" -> Alignment.BottomStart; else -> Alignment.BottomEnd
@@ -456,6 +461,7 @@ fun ViewerPage(
                 .clickable { if (settings.confirmDelete) showDlg = true else doDelete() }
                 .padding(horizontal = 20.dp, vertical = 12.dp))
 
+        // 底部计数
         if (scale <= 1.05f) {
             Text("◀ ${idx + 1}/${local.size} ▶", color = Color(0x99FFFFFF), fontSize = 12.sp,
                 modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 16.dp))
@@ -543,7 +549,7 @@ fun TrashPage(client: WebDavClient, currentPath: String, onBack: () -> Unit) {
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 itemsIndexed(trashItems) { _, entry ->
-                    TrashEntryRow(entry, client, currentPath, ctx, scope,
+                    TrashEntryRow(entry, client, ctx, scope,
                         onRestored = { trashItems = trashItems.filter { it.id != entry.id } },
                         onDeleted = { trashItems = trashItems.filter { it.id != entry.id } }
                     )
@@ -555,7 +561,7 @@ fun TrashPage(client: WebDavClient, currentPath: String, onBack: () -> Unit) {
 
 @Composable
 fun TrashEntryRow(
-    entry: TrashEntry, client: WebDavClient, currentPath: String,
+    entry: TrashEntry, client: WebDavClient,
     ctx: android.content.Context, scope: CoroutineScope,
     onRestored: () -> Unit, onDeleted: () -> Unit
 ) {
@@ -567,61 +573,49 @@ fun TrashEntryRow(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
-            when {
-                entry.isImage -> "🖼️"
-                entry.isVideo -> "🎬"
-                else -> "📄"
-            }, fontSize = 28.sp
+            when { entry.isImage -> "🖼️"; entry.isVideo -> "🎬"; else -> "📄" },
+            fontSize = 28.sp
         )
         Spacer(Modifier.width(10.dp))
-
         Column(Modifier.weight(1f)) {
             Text(entry.fileName, color = Color.White, fontSize = 14.sp,
                 maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text("来自：${entry.originalPath}", color = Color(0xFF888888), fontSize = 10.sp,
-                maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Row {
-                if (entry.deletedAt.isNotBlank()) {
-                    Text("删除于 ${entry.deletedAt}", color = Color(0xFF666666), fontSize = 10.sp)
-                }
-                if (entry.size > 0) {
-                    Text("  ${fmtSize(entry.size)}", color = Color(0xFF666666), fontSize = 10.sp)
-                }
+            if (entry.size > 0) {
+                Text(fmtSize(entry.size), color = Color(0xFF666666), fontSize = 10.sp)
             }
+            Text(entry.date, color = Color(0xFF555555), fontSize = 10.sp,
+                maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
 
         if (busy) {
-            Text("处理中...", color = Color.Yellow, fontSize = 12.sp)
+            Text("...", color = Color.Yellow, fontSize = 14.sp,
+                modifier = Modifier.padding(horizontal = 8.dp))
         } else {
-            // 还原
             Text("还原", color = Color.White, fontSize = 13.sp,
                 modifier = Modifier.clip(RoundedCornerShape(6.dp))
                     .background(Color(0xFF2266CC))
                     .clickable {
                         busy = true
                         scope.launch(Dispatchers.IO) {
-                            val (ok, msg) = client.restoreFromTrash(entry, currentPath)
+                            val (ok, msg) = client.restoreFromTrash(entry)
                             withContext(Dispatchers.Main) {
                                 Toast.makeText(ctx, msg, Toast.LENGTH_SHORT).show()
-                                busy = false
-                                if (ok) onRestored()
+                                busy = false; if (ok) onRestored()
                             }
                         }
                     }
                     .padding(horizontal = 12.dp, vertical = 6.dp))
             Spacer(Modifier.width(6.dp))
-            // 永久删除
             Text("彻删", color = Color.White, fontSize = 13.sp,
                 modifier = Modifier.clip(RoundedCornerShape(6.dp))
                     .background(Color(0xFF993333))
                     .clickable {
                         busy = true
                         scope.launch(Dispatchers.IO) {
-                            client.permanentDeleteTrashEntry(entry, currentPath)
+                            client.permanentDeleteTrashEntry(entry)
                             withContext(Dispatchers.Main) {
                                 Toast.makeText(ctx, "已永久删除", Toast.LENGTH_SHORT).show()
-                                busy = false
-                                onDeleted()
+                                busy = false; onDeleted()
                             }
                         }
                     }
