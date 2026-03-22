@@ -6,9 +6,13 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.*
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.*
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -16,6 +20,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -35,13 +41,15 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val settings = Settings(this)
-        setContent { MaterialTheme(colorScheme = darkColorScheme()) {
-            Surface(color = MaterialTheme.colorScheme.background) { AppRoot(settings) }
-        }}
+        setContent {
+            MaterialTheme(colorScheme = darkColorScheme()) {
+                Surface(color = MaterialTheme.colorScheme.background) { AppRoot(settings) }
+            }
+        }
     }
 }
 
-enum class Screen { LOGIN, BROWSER, VIEWER }
+enum class Screen { LOGIN, BROWSER, VIEWER, TRASH }
 
 fun fmtSize(b: Long): String = when {
     b <= 0 -> ""
@@ -54,9 +62,11 @@ fun fmtSize(b: Long): String = when {
 @Composable
 fun AppRoot(settings: Settings) {
     var screen by remember { mutableStateOf(if (settings.isConfigured()) Screen.BROWSER else Screen.LOGIN) }
-    var client by remember { mutableStateOf(
-        if (settings.isConfigured()) WebDavClient(settings.serverUrl, settings.username, settings.password) else null
-    ) }
+    var client by remember {
+        mutableStateOf(
+            if (settings.isConfigured()) WebDavClient(settings.serverUrl, settings.username, settings.password) else null
+        )
+    }
     var curPath by remember { mutableStateOf("/") }
     var items by remember { mutableStateOf<List<DavItem>>(emptyList()) }
     var media by remember { mutableStateOf<List<DavItem>>(emptyList()) }
@@ -132,6 +142,7 @@ fun AppRoot(settings: Settings) {
                 onSort = { resort(it) },
                 onToggle = { sortAsc = !sortAsc; resort() },
                 onSettings = { screen = Screen.LOGIN },
+                onTrash = { screen = Screen.TRASH },
                 settings = settings
             )
         }
@@ -144,6 +155,15 @@ fun AppRoot(settings: Settings) {
                     items = items.filter { it.href != d.href }
                     media = media.filter { it.href != d.href }
                 }
+            )
+        }
+
+        Screen.TRASH -> {
+            BackHandler { screen = Screen.BROWSER }
+            TrashPage(
+                client = client!!,
+                currentPath = curPath,
+                onBack = { screen = Screen.BROWSER; load(curPath) }
             )
         }
     }
@@ -210,10 +230,10 @@ fun BrowserPage(
     items: List<DavItem>, path: String, sortBy: String, sortAsc: Boolean,
     onNav: (DavItem) -> Unit, onUp: () -> Unit, onHome: () -> Unit,
     onSort: (String) -> Unit, onToggle: () -> Unit, onSettings: () -> Unit,
-    settings: Settings
+    onTrash: () -> Unit, settings: Settings
 ) {
     Column(Modifier.fillMaxSize()) {
-        // 顶栏
+        // 顶栏：加了回收站按钮
         Row(
             Modifier.fillMaxWidth().background(Color(0xFF222222)).padding(8.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -222,6 +242,8 @@ fun BrowserPage(
             Text(path, color = Color.Gray, fontSize = 12.sp, maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f).padding(horizontal = 8.dp))
+            IBtn("♻") { onTrash() }
+            Spacer(Modifier.width(4.dp))
             IBtn("⚙") { onSettings() }
         }
         // 排序栏
@@ -262,7 +284,6 @@ fun BrowserPage(
                     }
                 }
             }
-
             items(mediaList.size) { i ->
                 val item = mediaList[i]
                 Box(
@@ -272,8 +293,7 @@ fun BrowserPage(
                     if (item.isImage) {
                         AsyncImage(
                             model = settings.serverUrl.trimEnd('/') + "/" + item.href.trimStart('/'),
-                            contentDescription = null,
-                            contentScale = ContentScale.Crop,
+                            contentDescription = null, contentScale = ContentScale.Crop,
                             modifier = Modifier.fillMaxSize()
                         )
                     } else {
@@ -284,8 +304,7 @@ fun BrowserPage(
                     if (item.size > 0) {
                         Text(fmtSize(item.size), fontSize = 9.sp, color = Color.White,
                             modifier = Modifier.align(Alignment.TopStart)
-                                .background(Color(0xBB000000),
-                                    RoundedCornerShape(0.dp, 0.dp, 4.dp, 0.dp))
+                                .background(Color(0xBB000000), RoundedCornerShape(0.dp, 0.dp, 4.dp, 0.dp))
                                 .padding(3.dp))
                     }
                     Text(item.name, fontSize = 9.sp, color = Color.White,
@@ -306,7 +325,7 @@ fun IBtn(t: String, onClick: () -> Unit) {
             .padding(horizontal = 12.dp, vertical = 6.dp))
 }
 
-// ========== 全屏浏览页 ==========
+// ========== 全屏浏览页（移到回收站而非永久删除） ==========
 @Composable
 fun ViewerPage(
     items: List<DavItem>, startIdx: Int, client: WebDavClient, settings: Settings,
@@ -315,20 +334,32 @@ fun ViewerPage(
     var idx by remember { mutableStateOf(startIdx.coerceIn(0, (items.size - 1).coerceAtLeast(0))) }
     var local by remember { mutableStateOf(items.toList()) }
     var showDlg by remember { mutableStateOf(false) }
+    val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
+
+    var scale by remember { mutableStateOf(1f) }
+    var offsetX by remember { mutableStateOf(0f) }
+    var offsetY by remember { mutableStateOf(0f) }
+    LaunchedEffect(idx) { scale = 1f; offsetX = 0f; offsetY = 0f }
 
     if (local.isEmpty()) { LaunchedEffect(Unit) { onBack() }; return }
     val cur = local[idx.coerceIn(0, local.size - 1)]
 
+    // ★ 改为移到回收站
     fun doDelete() {
         val toDelete = cur
         scope.launch(Dispatchers.IO) {
-            client.delete(toDelete.href)
+            val success = client.moveToTrash(toDelete.href)
             withContext(Dispatchers.Main) {
-                onDel(toDelete)
-                local = local.filter { it.href != toDelete.href }
-                if (local.isEmpty()) { onBack(); return@withContext }
-                if (idx >= local.size) idx = 0
+                if (success) {
+                    Toast.makeText(ctx, "已移到回收站", Toast.LENGTH_SHORT).show()
+                    onDel(toDelete)
+                    local = local.filter { it.href != toDelete.href }
+                    if (local.isEmpty()) { onBack(); return@withContext }
+                    if (idx >= local.size) idx = 0
+                } else {
+                    Toast.makeText(ctx, "移动失败", Toast.LENGTH_SHORT).show()
+                }
             }
         }
     }
@@ -340,77 +371,87 @@ fun ViewerPage(
     if (showDlg) {
         AlertDialog(
             onDismissRequest = { showDlg = false },
-            title = { Text("确认删除") },
-            text = { Text("删除 ${cur.name}？") },
+            title = { Text("移到回收站") },
+            text = { Text("将 ${cur.name} 移到回收站？") },
             confirmButton = {
-                TextButton({ showDlg = false; doDelete() }) {
-                    Text("删除", color = Color.Red)
-                }
+                TextButton({ showDlg = false; doDelete() }) { Text("移到回收站", color = Color.Red) }
             },
-            dismissButton = {
-                TextButton({ showDlg = false }) { Text("取消") }
-            }
+            dismissButton = { TextButton({ showDlg = false }) { Text("取消") } }
         )
     }
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
-        // 内容
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             if (cur.isImage) {
                 AsyncImage(
-                    model = client.fileUrl(cur.href),
-                    contentDescription = null,
+                    model = client.fileUrl(cur.href), contentDescription = null,
                     contentScale = ContentScale.Fit,
                     modifier = Modifier.fillMaxSize()
+                        .pointerInput(idx) {
+                            detectTransformGestures { _, pan, zoom, _ ->
+                                scale = (scale * zoom).coerceIn(1f, 5f)
+                                if (scale > 1f) {
+                                    offsetX += pan.x; offsetY += pan.y
+                                    val maxX = (scale - 1f) * size.width / 2
+                                    val maxY = (scale - 1f) * size.height / 2
+                                    offsetX = offsetX.coerceIn(-maxX, maxX)
+                                    offsetY = offsetY.coerceIn(-maxY, maxY)
+                                } else { offsetX = 0f; offsetY = 0f }
+                            }
+                        }
+                        .pointerInput(idx) {
+                            detectTapGestures(onDoubleTap = {
+                                if (scale > 1.1f) { scale = 1f; offsetX = 0f; offsetY = 0f }
+                                else scale = 2.5f
+                            })
+                        }
+                        .graphicsLayer(scaleX = scale, scaleY = scale,
+                            translationX = offsetX, translationY = offsetY)
                 )
             } else if (cur.isVideo) {
                 VPlayer(client.fileUrl(cur.href), client)
             }
         }
 
-        // 左右点击区域
-        Row(Modifier.fillMaxSize()) {
-            Box(
-                Modifier.weight(0.4f).fillMaxHeight().clickable(
-                    indication = null,
-                    interactionSource = remember { MutableInteractionSource() }
-                ) { nav(-1) }
-            )
-            Spacer(Modifier.weight(0.2f))
-            Box(
-                Modifier.weight(0.4f).fillMaxHeight().clickable(
-                    indication = null,
-                    interactionSource = remember { MutableInteractionSource() }
-                ) { nav(1) }
-            )
+        if (scale <= 1.05f) {
+            Row(Modifier.fillMaxSize()) {
+                Box(Modifier.weight(0.4f).fillMaxHeight().clickable(
+                    indication = null, interactionSource = remember { MutableInteractionSource() }
+                ) { nav(-1) })
+                Spacer(Modifier.weight(0.2f))
+                Box(Modifier.weight(0.4f).fillMaxHeight().clickable(
+                    indication = null, interactionSource = remember { MutableInteractionSource() }
+                ) { nav(1) })
+            }
         }
 
-        // 顶部信息
         Row(
             Modifier.align(Alignment.TopCenter).fillMaxWidth()
                 .background(Color(0x99000000)).padding(8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center
         ) {
-            Text(
-                "${idx + 1}/${local.size}  ${if (cur.size > 0) "(${fmtSize(cur.size)}) " else ""}${cur.name}",
-                color = Color.White, fontSize = 12.sp, maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            Text("${idx + 1}/${local.size}  ${if (cur.size > 0) "(${fmtSize(cur.size)}) " else ""}${cur.name}",
+                color = Color.White, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
 
-        // 返回按钮
         Text("✕", color = Color.White, fontSize = 18.sp,
             modifier = Modifier.align(Alignment.TopStart).padding(8.dp)
                 .clip(RoundedCornerShape(8.dp)).background(Color(0xAA333333))
                 .clickable { onBack() }.padding(horizontal = 14.dp, vertical = 8.dp))
 
-        // 删除按钮（位置可配置）
+        if (scale > 1.05f) {
+            Text("${(scale * 100).toInt()}%  双击复原",
+                color = Color(0xAAFFFFFF), fontSize = 11.sp,
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 40.dp)
+                    .background(Color(0x66000000), RoundedCornerShape(12.dp))
+                    .padding(horizontal = 10.dp, vertical = 4.dp))
+        }
+
+        // 删除按钮（现在是移到回收站）
         val al = when (settings.deleteButtonPos) {
-            "top-left" -> Alignment.TopStart
-            "top-right" -> Alignment.TopEnd
-            "bottom-left" -> Alignment.BottomStart
-            else -> Alignment.BottomEnd
+            "top-left" -> Alignment.TopStart; "top-right" -> Alignment.TopEnd
+            "bottom-left" -> Alignment.BottomStart; else -> Alignment.BottomEnd
         }
         val pd = when (settings.deleteButtonPos) {
             "top-left" -> Modifier.padding(start = 8.dp, top = 52.dp)
@@ -418,20 +459,195 @@ fun ViewerPage(
             "bottom-left" -> Modifier.padding(start = 8.dp, bottom = 16.dp)
             else -> Modifier.padding(end = 8.dp, bottom = 16.dp)
         }
-        Text("🗑️ 删除", color = Color.White, fontSize = 16.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.align(al).then(pd)
-                .clip(RoundedCornerShape(12.dp)).background(Color(0xFFDD2222))
+        Text("🗑️ 删除", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold,
+            modifier = Modifier.align(al).then(pd).clip(RoundedCornerShape(12.dp))
+                .background(Color(0xFFDD2222))
                 .clickable { if (settings.confirmDelete) showDlg = true else doDelete() }
                 .padding(horizontal = 20.dp, vertical = 12.dp))
 
-        // 底部计数
-        Text("◀ ${idx + 1}/${local.size} ▶",
-            color = Color(0x99FFFFFF), fontSize = 12.sp,
-            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 16.dp))
+        if (scale <= 1.05f) {
+            Text("◀ ${idx + 1}/${local.size} ▶", color = Color(0x99FFFFFF), fontSize = 12.sp,
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 16.dp))
+        }
     }
 }
 
+// ========== ♻ 回收站页面 ==========
+@Composable
+fun TrashPage(client: WebDavClient, currentPath: String, onBack: () -> Unit) {
+    var trashItems by remember { mutableStateOf<List<TrashItem>>(emptyList()) }
+    var loading by remember { mutableStateOf(true) }
+    var showEmptyDlg by remember { mutableStateOf(false) }
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    // 加载回收站列表
+    fun loadTrash() {
+        loading = true
+        scope.launch(Dispatchers.IO) {
+            val items = client.listTrash(currentPath)
+            withContext(Dispatchers.Main) { trashItems = items; loading = false }
+        }
+    }
+
+    LaunchedEffect(Unit) { loadTrash() }
+
+    // 清空回收站确认
+    if (showEmptyDlg) {
+        AlertDialog(
+            onDismissRequest = { showEmptyDlg = false },
+            title = { Text("清空回收站") },
+            text = { Text("永久删除回收站中的 ${trashItems.size} 个文件？\n此操作不可恢复！") },
+            confirmButton = {
+                TextButton({
+                    showEmptyDlg = false
+                    scope.launch(Dispatchers.IO) {
+                        client.emptyTrash(currentPath)
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(ctx, "回收站已清空", Toast.LENGTH_SHORT).show()
+                            trashItems = emptyList()
+                        }
+                    }
+                }) { Text("永久删除", color = Color.Red) }
+            },
+            dismissButton = { TextButton({ showEmptyDlg = false }) { Text("取消") } }
+        )
+    }
+
+    Column(Modifier.fillMaxSize()) {
+        // 顶栏
+        Row(
+            Modifier.fillMaxWidth().background(Color(0xFF222222)).padding(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IBtn("✕") { onBack() }
+            Spacer(Modifier.width(8.dp))
+            Text("♻ 回收站", color = Color.White, fontSize = 18.sp,
+                fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+            // 刷新按钮
+            IBtn("🔄") { loadTrash() }
+            Spacer(Modifier.width(4.dp))
+            // 清空按钮
+            if (trashItems.isNotEmpty()) {
+                Text("清空", color = Color.White, fontSize = 14.sp,
+                    modifier = Modifier.clip(RoundedCornerShape(6.dp))
+                        .background(Color(0xFFCC3333)).clickable { showEmptyDlg = true }
+                        .padding(horizontal = 12.dp, vertical = 6.dp))
+            }
+        }
+
+        if (loading) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("加载中...", color = Color.Gray, fontSize = 16.sp)
+            }
+        } else if (trashItems.isEmpty()) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("♻", fontSize = 48.sp)
+                    Spacer(Modifier.height(12.dp))
+                    Text("回收站是空的", color = Color.Gray, fontSize = 16.sp)
+                }
+            }
+        } else {
+            // 顶部统计
+            Text("  共 ${trashItems.size} 个文件",
+                color = Color.Gray, fontSize = 12.sp,
+                modifier = Modifier.padding(8.dp))
+
+            LazyColumn(
+                Modifier.fillMaxSize().padding(horizontal = 6.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                itemsIndexed(trashItems) { index, item ->
+                    TrashItemRow(item, client, ctx, scope,
+                        onRestored = {
+                            trashItems = trashItems.filter { it.trashHref != item.trashHref }
+                        },
+                        onPermanentDeleted = {
+                            trashItems = trashItems.filter { it.trashHref != item.trashHref }
+                        }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun TrashItemRow(
+    item: TrashItem, client: WebDavClient, ctx: android.content.Context,
+    scope: CoroutineScope, onRestored: () -> Unit, onPermanentDeleted: () -> Unit
+) {
+    var showMenu by remember { mutableStateOf(false) }
+    var busy by remember { mutableStateOf(false) }
+
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp))
+            .background(Color(0xFF222222)).padding(10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // 图标
+        Text(
+            if (item.isImage) "🖼️" else if (item.isVideo) "🎬" else "📄",
+            fontSize = 28.sp
+        )
+        Spacer(Modifier.width(10.dp))
+
+        // 文件信息
+        Column(Modifier.weight(1f)) {
+            Text(item.name, color = Color.White, fontSize = 14.sp,
+                maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text("原：${item.originalPath}", color = Color(0xFF888888), fontSize = 10.sp,
+                maxLines = 2, overflow = TextOverflow.Ellipsis)
+            if (item.size > 0) {
+                Text(fmtSize(item.size), color = Color(0xFF666666), fontSize = 10.sp)
+            }
+        }
+
+        if (busy) {
+            Text("处理中...", color = Color.Yellow, fontSize = 12.sp)
+        } else {
+            // 还原按钮
+            Text("还原", color = Color.White, fontSize = 13.sp,
+                modifier = Modifier.clip(RoundedCornerShape(6.dp))
+                    .background(Color(0xFF2266CC))
+                    .clickable {
+                        busy = true
+                        scope.launch(Dispatchers.IO) {
+                            val (ok, msg) = client.restoreFromTrash(item.trashHref)
+                            withContext(Dispatchers.Main) {
+                                Toast.makeText(ctx, msg, Toast.LENGTH_SHORT).show()
+                                busy = false
+                                if (ok) onRestored()
+                            }
+                        }
+                    }
+                    .padding(horizontal = 12.dp, vertical = 6.dp))
+
+            Spacer(Modifier.width(6.dp))
+
+            // 永久删除按钮
+            Text("彻删", color = Color.White, fontSize = 13.sp,
+                modifier = Modifier.clip(RoundedCornerShape(6.dp))
+                    .background(Color(0xFF993333))
+                    .clickable {
+                        busy = true
+                        scope.launch(Dispatchers.IO) {
+                            client.permanentDelete(item.trashHref)
+                            client.permanentDelete("${item.trashHref}.trashinfo")
+                            withContext(Dispatchers.Main) {
+                                Toast.makeText(ctx, "已永久删除", Toast.LENGTH_SHORT).show()
+                                busy = false
+                                onPermanentDeleted()
+                            }
+                        }
+                    }
+                    .padding(horizontal = 12.dp, vertical = 6.dp))
+        }
+    }
+}
+
+// ========== 视频播放器 ==========
 @Composable
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 fun VPlayer(url: String, client: WebDavClient) {
@@ -442,9 +658,7 @@ fun VPlayer(url: String, client: WebDavClient) {
         ).build()
     }
     DisposableEffect(url) {
-        player.setMediaItem(MediaItem.fromUri(url))
-        player.prepare()
-        player.playWhenReady = true
+        player.setMediaItem(MediaItem.fromUri(url)); player.prepare(); player.playWhenReady = true
         onDispose { player.release() }
     }
     AndroidView(
