@@ -38,6 +38,7 @@ import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
 import kotlinx.coroutines.*
 import kotlin.math.abs
+import androidx.compose.foundation.gestures.awaitFirstDown
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -540,15 +541,15 @@ fun ViewerPage(
                             val change = event.changes.firstOrNull() ?: break
                             endX = change.position.x
                             endY = change.position.y
-                            if (abs(endX - startX) > 20 || abs(endY - startY) > 20) moved = true
+                            if (kotlin.math.abs(endX - startX) > 20 || kotlin.math.abs(endY - startY) > 20) moved = true
                             if (!change.pressed) break
                         }
 
                         val dx = endX - startX
                         val dy = endY - startY
                         val dt = System.currentTimeMillis() - startTime
-                        val adx = abs(dx)
-                        val ady = abs(dy)
+                        val adx = kotlin.math.abs(dx)
+                        val ady = kotlin.math.abs(dy)
 
                         // 上下滑动 → 切换文件（图片和视频通用）
                         if (ady > 80 && ady > adx * 1.5f) {
