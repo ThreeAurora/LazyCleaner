@@ -619,6 +619,7 @@ fun ViewerPage(
 
     var scale by remember { mutableStateOf(1f) }
     var offsetX by remember { mutableStateOf(0f) }
+    var lastTapTime by remember { mutableStateOf(0L) }
     var offsetY by remember { mutableStateOf(0f) }
     var playerRef by remember { mutableStateOf<ExoPlayer?>(null) }
 
@@ -669,24 +670,6 @@ fun ViewerPage(
                     model = client.fileUrl(cur.href), contentDescription = null,
                     contentScale = ContentScale.Fit,
                     modifier = Modifier.fillMaxSize()
-                        .pointerInput(idx) {
-                            detectTransformGestures { _, pan, zoom, _ ->
-                                scale = (scale * zoom).coerceIn(1f, 5f)
-                                if (scale > 1f) {
-                                    offsetX += pan.x; offsetY += pan.y
-                                    val maxX = (scale - 1f) * size.width / 2
-                                    val maxY = (scale - 1f) * size.height / 2
-                                    offsetX = offsetX.coerceIn(-maxX, maxX)
-                                    offsetY = offsetY.coerceIn(-maxY, maxY)
-                                } else { offsetX = 0f; offsetY = 0f }
-                            }
-                        }
-                        .pointerInput(idx) {
-                            detectTapGestures(onDoubleTap = {
-                                if (scale > 1.1f) { scale = 1f; offsetX = 0f; offsetY = 0f }
-                                else scale = 2.5f
-                            })
-                        }
                         .graphicsLayer(scaleX = scale, scaleY = scale,
                             translationX = offsetX, translationY = offsetY)
                 )
@@ -699,7 +682,7 @@ fun ViewerPage(
             }
         }
 
-        // 手势层（视频时底部留空给进度条）
+        // 手势层（统一处理：点击、滑动、双指缩放、双击缩放）
         Box(
             Modifier.fillMaxWidth()
                 .then(if (cur.isVideo) Modifier.fillMaxHeight(0.85f) else Modifier.fillMaxHeight())
@@ -713,45 +696,141 @@ fun ViewerPage(
                             var endX = startX
                             var endY = startY
                             var moved = false
-
+                            var pointersUsed = 1
+        
+                            // 跟踪缩放
+                            var initialDist = 0f
+                            var initialScale = scale
+        
                             while (true) {
                                 val event = awaitPointerEvent()
-                                val change = event.changes.firstOrNull() ?: break
-                                endX = change.position.x
-                                endY = change.position.y
-                                if (kotlin.math.abs(endX - startX) > 20 ||
-                                    kotlin.math.abs(endY - startY) > 20) moved = true
-                                if (!change.pressed) break
+                                val pointers = event.changes.filter { it.pressed }
+        
+                                if (pointers.isEmpty()) {
+                                    // 所有手指抬起
+                                    val lastChange = event.changes.firstOrNull()
+                                    if (lastChange != null) {
+                                        endX = lastChange.position.x
+                                        endY = lastChange.position.y
+                                    }
+                                    break
+                                }
+        
+                                if (pointers.size >= 2 && cur.isImage) {
+                                    pointersUsed = 2
+                                    val p1 = pointers[0].position
+                                    val p2 = pointers[1].position
+                                    val dist = kotlin.math.sqrt(
+                                        (p2.x - p1.x) * (p2.x - p1.x) +
+                                        (p2.y - p1.y) * (p2.y - p1.y)
+                                    )
+        
+                                    if (initialDist == 0f) {
+                                        initialDist = dist
+                                        initialScale = scale
+                                    } else if (dist > 0f) {
+                                        val newScale = (initialScale * dist / initialDist).coerceIn(1f, 5f)
+                                        scale = newScale
+        
+                                        if (scale > 1f) {
+                                            // 双指中点的平移
+                                            val midX = (p1.x + p2.x) / 2
+                                            val midY = (p1.y + p2.y) / 2
+                                            val prevMidX = (pointers[0].previousPosition.x + pointers[1].previousPosition.x) / 2
+                                            val prevMidY = (pointers[0].previousPosition.y + pointers[1].previousPosition.y) / 2
+                                            offsetX += midX - prevMidX
+                                            offsetY += midY - prevMidY
+                                            val maxX = (scale - 1f) * size.width / 2
+                                            val maxY = (scale - 1f) * size.height / 2
+                                            offsetX = offsetX.coerceIn(-maxX, maxX)
+                                            offsetY = offsetY.coerceIn(-maxY, maxY)
+                                        } else {
+                                            offsetX = 0f; offsetY = 0f
+                                        }
+                                    }
+                                    // 消费事件防止滚动
+                                    pointers.forEach { it.consume() }
+                                } else if (pointers.size == 1) {
+                                    val change = pointers[0]
+                                    endX = change.position.x
+                                    endY = change.position.y
+        
+                                    // 放大后单指拖动
+                                    if (scale > 1.05f && cur.isImage && pointersUsed == 1) {
+                                        val panX = change.position.x - change.previousPosition.x
+                                        val panY = change.position.y - change.previousPosition.y
+                                        if (kotlin.math.abs(panX) > 1 || kotlin.math.abs(panY) > 1) {
+                                            moved = true
+                                            offsetX += panX
+                                            offsetY += panY
+                                            val maxX = (scale - 1f) * size.width / 2
+                                            val maxY = (scale - 1f) * size.height / 2
+                                            offsetX = offsetX.coerceIn(-maxX, maxX)
+                                            offsetY = offsetY.coerceIn(-maxY, maxY)
+                                            change.consume()
+                                        }
+                                    } else {
+                                        if (kotlin.math.abs(endX - startX) > 20 ||
+                                            kotlin.math.abs(endY - startY) > 20) moved = true
+                                    }
+                                }
                             }
-
+        
+                            // 双指缩放后不做其他动作
+                            if (pointersUsed >= 2) continue
+        
                             val dx = endX - startX
                             val dy = endY - startY
                             val dt = System.currentTimeMillis() - startTime
                             val adx = kotlin.math.abs(dx)
                             val ady = kotlin.math.abs(dy)
-
+        
+                            // 放大状态下拖动过就不触发其他手势
+                            if (scale > 1.05f && moved) continue
+        
                             // 上下滑动 → 切换（图片视频通用）
-                            if (ady > 80 && ady > adx * 1.5f) {
+                            if (ady > 80 && ady > adx * 1.5f && scale <= 1.05f) {
                                 if (dy > 0) nav(-1) else nav(1)
                             }
-                            // 点击
+                            // 点击（没有明显移动 且 时间短）
                             else if (!moved && dt < 300) {
-                                val w = size.width
-                                if (cur.isVideo) {
-                                    val p = playerRef
-                                    if (p != null) {
-                                        when {
-                                            startX < w * 0.35f ->
-                                                p.seekTo((p.currentPosition - 5000).coerceAtLeast(0))
-                                            startX > w * 0.65f ->
-                                                p.seekTo((p.currentPosition + 5000).coerceAtMost(p.duration))
-                                            else ->
-                                                p.playWhenReady = !p.playWhenReady
+                                // 双击检测
+                                val now = System.currentTimeMillis()
+                                if (cur.isImage && now - lastTapTime < 350) {
+                                    // 双击缩放
+                                    if (scale > 1.1f) {
+                                        scale = 1f; offsetX = 0f; offsetY = 0f
+                                    } else {
+                                        scale = 2.5f
+                                    }
+                                    lastTapTime = 0L
+                                } else {
+                                    lastTapTime = now
+                                    // 延迟判断是否是单击（等待可能的双击）
+                                    val tapX = startX
+                                    val tapW = size.width
+                                    scope.launch {
+                                        delay(360)
+                                        if (lastTapTime == now) {
+                                            // 确认是单击
+                                            if (cur.isVideo) {
+                                                val p = playerRef
+                                                if (p != null) {
+                                                    when {
+                                                        tapX < tapW * 0.35f ->
+                                                            p.seekTo((p.currentPosition - 5000).coerceAtLeast(0))
+                                                        tapX > tapW * 0.65f ->
+                                                            p.seekTo((p.currentPosition + 5000).coerceAtMost(p.duration))
+                                                        else ->
+                                                            p.playWhenReady = !p.playWhenReady
+                                                    }
+                                                }
+                                            } else if (scale <= 1.05f) {
+                                                if (tapX < tapW * 0.4f) nav(-1)
+                                                else if (tapX > tapW * 0.6f) nav(1)
+                                            }
                                         }
                                     }
-                                } else if (scale <= 1.05f) {
-                                    if (startX < w * 0.4f) nav(-1)
-                                    else if (startX > w * 0.6f) nav(1)
                                 }
                             }
                         }
