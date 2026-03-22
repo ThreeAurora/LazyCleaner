@@ -108,7 +108,7 @@ class WebDavClient(private val baseUrl: String, user: String, pass: String) {
         } catch (_: Exception) { false }
     }
 
-    fun fileUrl(path: String) = buildUrl(path)
+    fun fileUrl(path: String) = buildEncodedUrl(path)
     fun getClient() = client
 
     // ===== 回收站 =====
