@@ -27,7 +27,10 @@ jobs:
           zipStoreBase=GRADLE_USER_HOME
           zipStorePath=wrapper/dists
           EOF
-          gradle wrapper --gradle-version 8.5
+          # 直接下载 wrapper jar 和 gradlew 脚本
+          curl -sL -o gradle/wrapper/gradle-wrapper.jar https://raw.githubusercontent.com/gradle/gradle/v8.5.0/gradle/wrapper/gradle-wrapper.jar
+          curl -sL -o gradlew https://raw.githubusercontent.com/gradle/gradle/v8.5.0/gradlew
+          chmod +x gradlew
 
       - name: Build Debug APK
         run: ./gradlew assembleDebug
