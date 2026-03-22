@@ -6,6 +6,7 @@ plugins {
 android {
     namespace = "com.webdav.browser"
     compileSdk = 34
+    
     defaultConfig {
         applicationId = "com.webdav.browser"
         minSdk = 26
@@ -13,11 +14,27 @@ android {
         versionCode = 1
         versionName = "1.0"
     }
+    
     buildTypes {
         release {
             isMinifyEnabled = false
         }
     }
+    
+    // 添加这个配置来修改APK文件名
+    applicationVariants.all {
+        val variant = this
+        variant.outputs
+            .map { it as com.android.build.gradle.internal.api.BaseVariantOutputImpl }
+            .forEach { output ->
+                val buildType = variant.buildType.name
+                val version = defaultConfig.versionName
+                
+                // 设置APK文件名格式
+                output.outputFileName = "WebDAVBrowser_${buildType}_v${version}.apk"
+            }
+    }
+    
     buildFeatures { compose = true }
     composeOptions { kotlinCompilerExtensionVersion = "1.5.8" }
     kotlinOptions {
