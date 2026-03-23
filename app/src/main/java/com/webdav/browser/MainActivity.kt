@@ -12,11 +12,8 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
-import androidx.compose.animation.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -32,7 +29,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -56,210 +52,651 @@ import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
 import kotlinx.coroutines.*
 
-// ===== 调色板 =====
+// ===== 配色 =====
 val BG = Color(0xFF0D1117)
 val CARD = Color(0xFF161B22)
-val CARD_LIGHT = Color(0xFF1C2333)
-val ACCENT = Color(0xFF58A6FF)
-val ACCENT2 = Color(0xFF3FB950)
-val DANGER = Color(0xFFf85149)
-val TEXT1 = Color(0xFFE6EDF3)
-val TEXT2 = Color(0xFF8B949E)
-val TEXT3 = Color(0xFF484F58)
-val DIVIDER = Color(0xFF21262D)
-val GRADIENT_TOP = Color(0xFF161B22)
-val GRADIENT_BOT = Color(0xFF0D1117)
+val CARD2 = Color(0xFF1C2333)
+val ACC = Color(0xFF58A6FF)
+val ACC2 = Color(0xFF3FB950)
+val DNG = Color(0xFFf85149)
+val T1 = Color(0xFFE6EDF3)
+val T2 = Color(0xFF8B949E)
+val T3 = Color(0xFF484F58)
+val SEL_BG = Color(0xFF1F3A5F)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         requestStoragePermission()
-        val settings = Settings(this)
         setContent {
-            MaterialTheme(colorScheme = darkColorScheme(
-                background = BG, surface = CARD, primary = ACCENT
-            )) {
-                Surface(color = BG) { AppRoot(settings) }
+            MaterialTheme(colorScheme = darkColorScheme(background = BG, surface = CARD, primary = ACC)) {
+                Surface(color = BG) { AppRoot(Settings(this@MainActivity)) }
             }
         }
     }
-
     private fun requestStoragePermission() {
         if (Build.VERSION.SDK_INT >= 30) {
-            if (!Environment.isExternalStorageManager()) {
-                try {
-                    val intent = Intent(AndroidSettings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
-                        Uri.parse("package:$packageName"))
-                    startActivity(intent)
-                } catch (_: Exception) {
-                    startActivity(Intent(AndroidSettings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
-                }
-            }
-        } else {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE)
-                != PackageManager.PERMISSION_GRANTED) {
-                ActivityCompat.requestPermissions(this,
-                    arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE,
-                        Manifest.permission.WRITE_EXTERNAL_STORAGE), 1)
-            }
-        }
+            if (!Environment.isExternalStorageManager()) try {
+                startActivity(Intent(AndroidSettings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                    Uri.parse("package:$packageName")))
+            } catch (_: Exception) { startActivity(Intent(AndroidSettings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)) }
+        } else if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE)
+            != PackageManager.PERMISSION_GRANTED)
+            ActivityCompat.requestPermissions(this,
+                arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE), 1)
     }
 }
 
-enum class Screen { LOGIN, BROWSER, VIEWER, TRASH, SPLIT }
+enum class Screen { LOGIN, BROWSER, VIEWER, TRASH }
 
 fun fmtSize(b: Long): String = when {
-    b <= 0 -> ""
-    b < 1024 -> "${b}B"
-    b < 1048576 -> "${"%.1f".format(b / 1024.0)}K"
-    b < 1073741824 -> "${"%.1f".format(b / 1048576.0)}M"
-    else -> "${"%.2f".format(b / 1073741824.0)}G"
+    b <= 0 -> ""; b < 1024 -> "${b}B"; b < 1048576 -> "${"%.1f".format(b/1024.0)}K"
+    b < 1073741824 -> "${"%.1f".format(b/1048576.0)}M"; else -> "${"%.2f".format(b/1073741824.0)}G"
 }
-
 fun fmtTime(ms: Long): String {
-    val s = (ms / 1000).coerceAtLeast(0)
-    val h = s / 3600; val m = (s % 3600) / 60; val sec = s % 60
-    return if (h > 0) "%d:%02d:%02d".format(h, m, sec) else "%d:%02d".format(m, sec)
+    val s = (ms/1000).coerceAtLeast(0); val h = s/3600; val m = (s%3600)/60; val sec = s%60
+    return if (h>0) "%d:%02d:%02d".format(h,m,sec) else "%d:%02d".format(m,sec)
 }
 
-// ========== 根组件 ==========
+// ========== 通用美化组件 ==========
+@Composable
+fun TopBar(content: @Composable RowScope.() -> Unit) {
+    Row(Modifier.fillMaxWidth().background(Brush.horizontalGradient(listOf(CARD2, CARD)))
+        .padding(horizontal = 6.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically, content = content)
+}
+
+@Composable
+fun Ico(emoji: String, label: String, color: Color = T2, onClick: () -> Unit) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { onClick() }
+            .padding(horizontal = 6.dp, vertical = 2.dp)) {
+        Text(emoji, fontSize = 18.sp, color = color)
+        Text(label, color = T3, fontSize = 8.sp, lineHeight = 10.sp)
+    }
+}
+
+@Composable
+fun Pill(text: String, active: Boolean = false, c: Color = ACC, onClick: () -> Unit) {
+    val bg = if (active) c.copy(alpha = 0.18f) else Color.Transparent
+    val fg = if (active) c else T2
+    val bd = if (active) c.copy(alpha = 0.4f) else T3.copy(alpha = 0.25f)
+    Text(text, color = fg, fontSize = 11.sp, fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
+        modifier = Modifier.clip(RoundedCornerShape(16.dp)).border(1.dp, bd, RoundedCornerShape(16.dp))
+            .background(bg).clickable { onClick() }.padding(horizontal = 10.dp, vertical = 4.dp))
+}
+
+// ========== 根 ==========
 @Composable
 fun AppRoot(settings: Settings) {
     var screen by remember { mutableStateOf(if (settings.isConfigured()) Screen.BROWSER else Screen.LOGIN) }
     var client by remember { mutableStateOf(
         if (settings.isConfigured()) WebDavClient(settings.serverUrl, settings.username, settings.password) else null
     )}
-    var curPath by remember { mutableStateOf("/") }
-    var allItems by remember { mutableStateOf<List<DavItem>>(emptyList()) }
-    var allMedia by remember { mutableStateOf<List<DavItem>>(emptyList()) }
+    // 双标签：0=WebDAV, 1=本地
+    var activeTab by remember { mutableStateOf(0) }
+    // WebDAV 状态
+    var davPath by remember { mutableStateOf("/") }
+    var davItems by remember { mutableStateOf<List<DavItem>>(emptyList()) }
+    var davMedia by remember { mutableStateOf<List<DavItem>>(emptyList()) }
+    var davPage by remember { mutableStateOf(0) }
+    var davSort by remember { mutableStateOf(settings.sortBy) }
+    var davAsc by remember { mutableStateOf(settings.sortAsc) }
+    // 本地状态
+    val localClient = remember { LocalFileClient() }
+    var localPath by remember { mutableStateOf(localClient.getDefaultRoot()) }
+    var localFiles by remember { mutableStateOf<List<LocalFile>>(emptyList()) }
+    var localPage by remember { mutableStateOf(0) }
+    var localSort by remember { mutableStateOf("name") }
+    var localAsc by remember { mutableStateOf(true) }
+    // 查看器
     var viewIdx by remember { mutableStateOf(0) }
-    var sortBy by remember { mutableStateOf(settings.sortBy) }
-    var sortAsc by remember { mutableStateOf(settings.sortAsc) }
-    var page by remember { mutableStateOf(0) }
-    val ctx = LocalContext.current
-    val scope = rememberCoroutineScope()
+    val ctx = LocalContext.current; val scope = rememberCoroutineScope()
+    // 多选
+    var davSel by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var localSel by remember { mutableStateOf<Set<String>>(emptySet()) }
+    // 重命名
+    var renameTarget by remember { mutableStateOf<Any?>(null) }
+    var renameText by remember { mutableStateOf("") }
+    // 忙碌
+    var busy by remember { mutableStateOf(false) }
+    var busyMsg by remember { mutableStateOf("") }
 
-    fun sortList(list: List<DavItem>): List<DavItem> {
-        val filtered = list.filter { !it.isTrash && (settings.showHidden || !it.isHidden) }
-        val dirs = filtered.filter { it.isDir }.sortedBy { it.name.lowercase() }
-        val files = filtered.filter { !it.isDir }.let { f ->
-            when (sortBy) {
-                "ext" -> f.sortedWith(compareBy({ it.ext }, { it.name.lowercase() }))
-                "size" -> f.sortedBy { it.size }
-                "date" -> f.sortedBy { it.date }
-                else -> f.sortedBy { it.name.lowercase() }
-            }.let { if (!sortAsc) it.reversed() else it }
-        }
-        return (if (sortAsc) dirs else dirs.reversed()) + files
+    fun sortDav(list: List<DavItem>): List<DavItem> {
+        val f = list.filter { !it.isTrash && (settings.showHidden || !it.isHidden) }
+        val dirs = f.filter { it.isDir }.sortedBy { it.name.lowercase() }
+        val files = f.filter { !it.isDir }.let { ff -> when (davSort) {
+            "ext" -> ff.sortedWith(compareBy({ it.ext }, { it.name.lowercase() }))
+            "size" -> ff.sortedBy { it.size }; "date" -> ff.sortedBy { it.date }
+            else -> ff.sortedBy { it.name.lowercase() }
+        }.let { if (!davAsc) it.reversed() else it } }
+        return (if (davAsc) dirs else dirs.reversed()) + files
     }
 
-    fun load(path: String) {
-        scope.launch(Dispatchers.IO) {
-            try {
-                val r = client!!.listDir(path)
-                withContext(Dispatchers.Main) {
-                    curPath = path; allItems = sortList(r); allMedia = allItems.filter { it.isMedia }; page = 0
-                }
-            } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(ctx, "加载失败: ${e.message}", Toast.LENGTH_SHORT).show()
-                }
-            }
-        }
+    fun sortLocal(list: List<LocalFile>): List<LocalFile> {
+        val f = list.filter { settings.showHidden || !it.isHidden }
+        val dirs = f.filter { it.isDir }.sortedBy { it.name.lowercase() }
+        val files = f.filter { !it.isDir }.let { ff -> when (localSort) {
+            "ext" -> ff.sortedWith(compareBy({ it.ext }, { it.name.lowercase() }))
+            "size" -> ff.sortedBy { it.size }; "date" -> ff.sortedBy { it.lastModified }
+            else -> ff.sortedBy { it.name.lowercase() }
+        }.let { if (!localAsc) it.reversed() else it } }
+        return (if (localAsc) dirs else dirs.reversed()) + files
     }
 
-    fun resort(by: String? = null) {
-        if (by != null) { if (sortBy == by) sortAsc = !sortAsc else { sortBy = by; sortAsc = true } }
-        settings.sortBy = sortBy; settings.sortAsc = sortAsc
-        allItems = sortList(allItems); allMedia = allItems.filter { it.isMedia }
+    fun loadDav(path: String) { scope.launch(Dispatchers.IO) { try {
+        val r = client!!.listDir(path)
+        withContext(Dispatchers.Main) { davPath = path; davItems = sortDav(r); davMedia = davItems.filter { it.isMedia }; davPage = 0; davSel = emptySet() }
+    } catch (e: Exception) { withContext(Dispatchers.Main) { Toast.makeText(ctx, "加载失败: ${e.message}", Toast.LENGTH_SHORT).show() } } } }
+
+    fun loadLocal() { localFiles = sortLocal(localClient.listDir(localPath, settings.showHidden)); localPage = 0; localSel = emptySet() }
+
+    fun resortDav(by: String? = null) {
+        if (by != null) { if (davSort == by) davAsc = !davAsc else { davSort = by; davAsc = true } }
+        settings.sortBy = davSort; settings.sortAsc = davAsc
+        davItems = sortDav(davItems); davMedia = davItems.filter { it.isMedia }
     }
+
+    fun resortLocal(by: String? = null) {
+        if (by != null) { if (localSort == by) localAsc = !localAsc else { localSort = by; localAsc = true } }
+        localFiles = sortLocal(localFiles)
+    }
+
+    // 跨栏传输
+    fun uploadSelected() {
+        if (localSel.isEmpty()) return; busy = true
+        scope.launch(Dispatchers.IO) { var ok = 0; var fail = 0
+            localSel.forEach { path -> val n = path.substringAfterLast('/'); busyMsg = "↑ $n"
+                val d = localClient.readBytes(path); if (d != null && client!!.uploadBytes("$davPath$n", d)) ok++ else fail++ }
+            withContext(Dispatchers.Main) { Toast.makeText(ctx, "上传 ${ok}成功 ${fail}失败", Toast.LENGTH_SHORT).show()
+                busy = false; busyMsg = ""; localSel = emptySet(); loadDav(davPath) } }
+    }
+
+    fun downloadSelected() {
+        if (davSel.isEmpty()) return; busy = true
+        scope.launch(Dispatchers.IO) { var ok = 0; var fail = 0
+            davSel.forEach { href -> val n = href.trimEnd('/').substringAfterLast('/'); busyMsg = "↓ $n"
+                val d = client!!.downloadBytes(href); if (d != null && localClient.writeBytes("$localPath/$n", d)) ok++ else fail++ }
+            withContext(Dispatchers.Main) { Toast.makeText(ctx, "下载 ${ok}成功 ${fail}失败", Toast.LENGTH_SHORT).show()
+                busy = false; busyMsg = ""; davSel = emptySet(); loadLocal() } }
+    }
+
+    // 重命名弹窗
+    if (renameTarget != null) AlertDialog(onDismissRequest = { renameTarget = null },
+        title = { Text("重命名", color = T1) },
+        text = { OutlinedTextField(renameText, { renameText = it }, singleLine = true,
+            modifier = Modifier.fillMaxWidth(), colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = ACC)) },
+        confirmButton = { TextButton({
+            when (val t = renameTarget) {
+                is LocalFile -> { localClient.rename(t.path, renameText); loadLocal() }
+                is DavItem -> scope.launch(Dispatchers.IO) { client?.davRename(t.href, renameText); withContext(Dispatchers.Main) { loadDav(davPath) } }
+            }; renameTarget = null
+        }) { Text("确定", color = ACC) } },
+        dismissButton = { TextButton({ renameTarget = null }) { Text("取消", color = T2) } })
 
     when (screen) {
         Screen.LOGIN -> LoginPage(settings) {
             client = WebDavClient(settings.serverUrl, settings.username, settings.password)
-            screen = Screen.BROWSER; load("/")
+            screen = Screen.BROWSER; loadDav("/"); loadLocal()
         }
+
         Screen.BROWSER -> {
-            LaunchedEffect(Unit) { if (allItems.isEmpty()) load("/") }
+            LaunchedEffect(Unit) { if (davItems.isEmpty()) loadDav("/"); if (localFiles.isEmpty()) loadLocal() }
             BackHandler {
-                if (curPath == "/") (ctx as? ComponentActivity)?.finish()
-                else { val p = curPath.trimEnd('/').substringBeforeLast('/').ifEmpty { "/" }
-                    load(if (p.endsWith("/")) p else "$p/") }
+                if (davSel.isNotEmpty() || localSel.isNotEmpty()) { davSel = emptySet(); localSel = emptySet() }
+                else if (activeTab == 0 && davPath != "/") { val p = davPath.trimEnd('/').substringBeforeLast('/').ifEmpty { "/" }; loadDav(if (p.endsWith("/")) p else "$p/") }
+                else if (activeTab == 1) { val parent = localPath.substringBeforeLast('/')
+                    if (parent.isNotEmpty() && parent != localPath) { localPath = parent; loadLocal() } else (ctx as? ComponentActivity)?.finish() }
+                else (ctx as? ComponentActivity)?.finish()
             }
-            BrowserPage(allItems, allMedia, curPath, sortBy, sortAsc, page, settings,
-                onNav = { if (it.isDir) load(it.href) else if (it.isMedia) {
-                    viewIdx = allMedia.indexOf(it).coerceAtLeast(0); screen = Screen.VIEWER
-                }},
-                onUp = { val p = curPath.trimEnd('/').substringBeforeLast('/').ifEmpty { "/" }
-                    load(if (p.endsWith("/")) p else "$p/") },
-                onHome = { load("/") },
-                onSort = { resort(it) },
-                onToggle = { sortAsc = !sortAsc; resort() },
-                onSettings = { screen = Screen.LOGIN },
-                onTrash = { screen = Screen.TRASH },
-                onSplit = { screen = Screen.SPLIT },
-                onPageChange = { page = it }
-            )
+
+            Column(Modifier.fillMaxSize().background(BG)) {
+                // ===== 标签栏 =====
+                Row(Modifier.fillMaxWidth().background(CARD).padding(horizontal = 8.dp)) {
+                    TabBtn("💻 电脑", activeTab == 0, ACC) { activeTab = 0 }
+                    Spacer(Modifier.width(4.dp))
+                    TabBtn("📱 手机", activeTab == 1, ACC2) { activeTab = 1 }
+                    Spacer(Modifier.weight(1f))
+                    if (busy) Text(busyMsg, color = ACC, fontSize = 10.sp, modifier = Modifier.align(Alignment.CenterVertically))
+                    // 跨栏传输按钮（有选中时显示）
+                    if (localSel.isNotEmpty()) {
+                        Ico("⬆", "上传", ACC) { uploadSelected() }
+                    }
+                    if (davSel.isNotEmpty()) {
+                        Ico("⬇", "下载", ACC2) { downloadSelected() }
+                    }
+                }
+
+                if (activeTab == 0) {
+                    // ===== WebDAV 面板 =====
+                    DavPanel(davItems, davMedia, davPath, davSort, davAsc, davPage, davSel, settings,
+                        onNav = { if (it.isDir) loadDav(it.href) else if (it.isMedia) {
+                            viewIdx = davMedia.indexOf(it).coerceAtLeast(0); screen = Screen.VIEWER } },
+                        onUp = { val p = davPath.trimEnd('/').substringBeforeLast('/').ifEmpty { "/" }; loadDav(if (p.endsWith("/")) p else "$p/") },
+                        onHome = { loadDav("/") },
+                        onSort = { resortDav(it) },
+                        onToggle = { davAsc = !davAsc; resortDav() },
+                        onSettings = { screen = Screen.LOGIN },
+                        onTrash = { screen = Screen.TRASH },
+                        onPageChange = { davPage = it },
+                        onSelChange = { davSel = it },
+                        onRename = { renameText = it.name; renameTarget = it }
+                    )
+                } else {
+                    // ===== 本地面板 =====
+                    LocalPanel(localFiles, localPath, localSort, localAsc, localPage, localSel, settings, localClient,
+                        onNav = { if (it.isDir) { localPath = it.path; loadLocal() } },
+                        onUp = { val p = localPath.substringBeforeLast('/')
+                            if (p.isNotEmpty() && p != localPath) { localPath = p; loadLocal() } },
+                        onSort = { resortLocal(it) },
+                        onToggle = { localAsc = !localAsc; resortLocal() },
+                        onSettings = { screen = Screen.LOGIN },
+                        onPageChange = { localPage = it },
+                        onSelChange = { localSel = it },
+                        onRename = { renameText = it.name; renameTarget = it },
+                        onDelete = { it.forEach { p -> localClient.delete(p) }; loadLocal() }
+                    )
+                }
+            }
         }
+
         Screen.VIEWER -> {
-            BackHandler { screen = Screen.BROWSER; load(curPath) }
-            ViewerPage(allMedia, viewIdx, client!!, settings,
-                onBack = { screen = Screen.BROWSER; load(curPath) },
-                onDel = { d -> allItems = allItems.filter { it.href != d.href }
-                    allMedia = allMedia.filter { it.href != d.href } }
-            )
+            BackHandler { screen = Screen.BROWSER; loadDav(davPath) }
+            ViewerPage(davMedia, viewIdx, client!!, settings,
+                onBack = { screen = Screen.BROWSER; loadDav(davPath) },
+                onDel = { d -> davItems = davItems.filter { it.href != d.href }; davMedia = davMedia.filter { it.href != d.href } })
         }
+
         Screen.TRASH -> {
             BackHandler { screen = Screen.BROWSER }
-            TrashPage(client!!, curPath) { screen = Screen.BROWSER; load(curPath) }
-        }
-        Screen.SPLIT -> {
-            BackHandler { screen = Screen.BROWSER; load(curPath) }
-            SplitPage(client!!, settings) { screen = Screen.BROWSER; load(curPath) }
+            TrashPage(client!!, davPath) { screen = Screen.BROWSER; loadDav(davPath) }
         }
     }
 }
 
-// ========== 美化通用组件 ==========
 @Composable
-fun GradientBar(content: @Composable RowScope.() -> Unit) {
-    Row(
-        Modifier.fillMaxWidth()
-            .background(Brush.horizontalGradient(listOf(Color(0xFF1C2333), Color(0xFF161B22))))
-            .padding(horizontal = 10.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        content = content
-    )
+fun TabBtn(label: String, active: Boolean, color: Color, onClick: () -> Unit) {
+    Text(label, color = if (active) color else T3, fontSize = 13.sp, fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
+        modifier = Modifier.clip(RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp))
+            .background(if (active) color.copy(alpha = 0.12f) else Color.Transparent)
+            .clickable { onClick() }
+            .padding(horizontal = 14.dp, vertical = 8.dp)
+            .then(if (active) Modifier.border(width = 0.dp, color = Color.Transparent,
+                shape = RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp)) else Modifier))
 }
 
+// ========== WebDAV 面板 ==========
 @Composable
-fun Pill(text: String, active: Boolean = false, color: Color = ACCENT, onClick: () -> Unit) {
-    val bg = if (active) color.copy(alpha = 0.2f) else Color.Transparent
-    val fg = if (active) color else TEXT2
-    val border = if (active) color.copy(alpha = 0.5f) else TEXT3.copy(alpha = 0.3f)
-    Text(text, color = fg, fontSize = 12.sp, fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
-        modifier = Modifier.clip(RoundedCornerShape(20.dp))
-            .border(1.dp, border, RoundedCornerShape(20.dp)).background(bg)
-            .clickable { onClick() }.padding(horizontal = 12.dp, vertical = 5.dp))
-}
+fun DavPanel(
+    allItems: List<DavItem>, allMedia: List<DavItem>, path: String,
+    sortBy: String, sortAsc: Boolean, page: Int,
+    selected: Set<String>, settings: Settings,
+    onNav: (DavItem) -> Unit, onUp: () -> Unit, onHome: () -> Unit,
+    onSort: (String) -> Unit, onToggle: () -> Unit, onSettings: () -> Unit,
+    onTrash: () -> Unit, onPageChange: (Int) -> Unit,
+    onSelChange: (Set<String>) -> Unit, onRename: (DavItem) -> Unit
+) {
+    var viewMode by remember { mutableStateOf(settings.viewMode) }
+    val ps = settings.pageSize
+    val folders = allItems.filter { it.isDir }
+    val files = allItems.filter { !it.isDir }
+    val tp = ((files.size + ps - 1) / ps).coerceAtLeast(1)
+    val cp = page.coerceIn(0, tp - 1)
+    val pf = files.drop(cp * ps).take(ps)
+    val scope = rememberCoroutineScope()
 
-@Composable
-fun ActionBtn(emoji: String, label: String = "", color: Color = TEXT2, onClick: () -> Unit) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { onClick() }
-            .padding(horizontal = 8.dp, vertical = 4.dp)) {
-        Text(emoji, fontSize = 22.sp)
-        if (label.isNotEmpty()) Text(label, color = color, fontSize = 9.sp)
+    Column(Modifier.fillMaxSize()) {
+        // 工具栏
+        TopBar {
+            Ico("‹", "上级") { onUp() }; Ico("⌂", "主页") { onHome() }
+            Text(path, color = T2, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f).padding(horizontal = 4.dp))
+            Ico(when (viewMode) { "list" -> "☰"; "waterfall" -> "▥"; else -> "▦" }, "视图") {
+                viewMode = when (viewMode) { "grid" -> "list"; "list" -> "waterfall"; else -> "grid" }
+                settings.viewMode = viewMode }
+            Ico("♻", "回收站") { onTrash() }
+            Ico("⚙", "设置") { onSettings() }
+        }
+
+        // 排序
+        Row(Modifier.fillMaxWidth().background(CARD).padding(horizontal = 6.dp, vertical = 3.dp),
+            horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+            listOf("name" to "名称", "ext" to "后缀", "size" to "大小", "date" to "日期").forEach { (k, l) ->
+                Pill(l, sortBy == k) { onSort(k) } }
+            Pill(if (sortAsc) "↑升序" else "↓降序") { onToggle() }
+        }
+
+        // 统计 + 选中操作
+        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp),
+            horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Text("${folders.size}文件夹 ${files.size}文件", color = T3, fontSize = 10.sp)
+            if (selected.isNotEmpty()) {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("已选${selected.size}", color = ACC, fontSize = 11.sp)
+                    Text("全选", color = ACC, fontSize = 11.sp, modifier = Modifier.clickable {
+                        onSelChange(files.map { it.href }.toSet()) })
+                    Text("取消", color = T2, fontSize = 11.sp, modifier = Modifier.clickable { onSelChange(emptySet()) })
+                }
+            }
+        }
+
+        // 内容
+        Box(Modifier.weight(1f)) {
+            when (viewMode) {
+                "list" -> DavListView(folders, pf, cp, settings, selected, onNav, onSelChange, onRename)
+                "waterfall" -> DavWaterfallView(folders, pf, cp, settings, selected, onNav, onSelChange, onRename)
+                else -> DavGridView(folders, pf, cp, settings, selected, onNav, onSelChange, onRename)
+            }
+        }
+
+        // 分页
+        if (tp > 1) Row(Modifier.fillMaxWidth().background(CARD).padding(4.dp),
+            horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+            PgBtn("«") { onPageChange(0) }; PgBtn("‹") { onPageChange((cp-1).coerceAtLeast(0)) }
+            Text(" ${cp+1}/$tp ", color = T1, fontSize = 12.sp)
+            PgBtn("›") { onPageChange((cp+1).coerceAtMost(tp-1)) }; PgBtn("»") { onPageChange(tp-1) }
+        }
     }
 }
 
-// ========== 登录页（美化版） ==========
+// ========== 本地面板 ==========
+@Composable
+fun LocalPanel(
+    allFiles: List<LocalFile>, path: String,
+    sortBy: String, sortAsc: Boolean, page: Int,
+    selected: Set<String>, settings: Settings, localClient: LocalFileClient,
+    onNav: (LocalFile) -> Unit, onUp: () -> Unit,
+    onSort: (String) -> Unit, onToggle: () -> Unit, onSettings: () -> Unit,
+    onPageChange: (Int) -> Unit,
+    onSelChange: (Set<String>) -> Unit, onRename: (LocalFile) -> Unit,
+    onDelete: (Set<String>) -> Unit
+) {
+    val ps = settings.pageSize
+    val folders = allFiles.filter { it.isDir }
+    val files = allFiles.filter { !it.isDir }
+    val tp = ((files.size + ps - 1) / ps).coerceAtLeast(1)
+    val cp = page.coerceIn(0, tp - 1)
+    val pf = files.drop(cp * ps).take(ps)
+    val ctx = LocalContext.current
+
+    Column(Modifier.fillMaxSize()) {
+        TopBar {
+            Ico("‹", "上级") { onUp() }
+            Text(path.removePrefix(localClient.getDefaultRoot()).ifEmpty { "/" },
+                color = T2, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f).padding(horizontal = 4.dp))
+            Ico("⚙", "设置") { onSettings() }
+        }
+
+        Row(Modifier.fillMaxWidth().background(CARD).padding(horizontal = 6.dp, vertical = 3.dp),
+            horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+            listOf("name" to "名称", "ext" to "后缀", "size" to "大小", "date" to "日期").forEach { (k, l) ->
+                Pill(l, sortBy == k) { onSort(k) } }
+            Pill(if (sortAsc) "↑升序" else "↓降序") { onToggle() }
+        }
+
+        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp),
+            horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Text("${folders.size}文件夹 ${files.size}文件", color = T3, fontSize = 10.sp)
+            if (selected.isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("已选${selected.size}", color = ACC2, fontSize = 11.sp)
+                Text("删除", color = DNG, fontSize = 11.sp, modifier = Modifier.clickable {
+                    onDelete(selected); onSelChange(emptySet()) })
+                Text("全选", color = ACC2, fontSize = 11.sp, modifier = Modifier.clickable {
+                    onSelChange(files.map { it.path }.toSet()) })
+                Text("取消", color = T2, fontSize = 11.sp, modifier = Modifier.clickable { onSelChange(emptySet()) })
+            }
+        }
+
+        LazyColumn(Modifier.weight(1f).padding(horizontal = 4.dp), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+            if (cp == 0) items(folders.size) { i -> val f = folders[i]
+                SwipeSelectRow(
+                    selected = selected.contains(f.path),
+                    onSelect = { onSelChange(if (selected.contains(f.path)) selected - f.path else selected + f.path) },
+                    onTap = { if (selected.isNotEmpty()) onSelChange(if (selected.contains(f.path)) selected - f.path else selected + f.path) else onNav(f) },
+                    onLongPress = { onRename(f) }
+                ) {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        Text("📁", fontSize = 18.sp, modifier = Modifier.graphicsLayer(alpha = if (f.isHidden) 0.4f else 1f))
+                        Spacer(Modifier.width(8.dp))
+                        Text(f.name, color = if (f.isHidden) T3 else T1, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+            }
+            items(pf.size) { i -> val f = pf[i]
+                SwipeSelectRow(
+                    selected = selected.contains(f.path),
+                    onSelect = { onSelChange(if (selected.contains(f.path)) selected - f.path else selected + f.path) },
+                    onTap = { if (selected.isNotEmpty()) onSelChange(if (selected.contains(f.path)) selected - f.path else selected + f.path) else onNav(f) },
+                    onLongPress = { onRename(f) }
+                ) {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        Text(f.fileIcon, fontSize = 18.sp, modifier = Modifier.graphicsLayer(alpha = if (f.isHidden) 0.4f else 1f))
+                        Spacer(Modifier.width(8.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(f.name, color = if (f.isHidden) T3 else T1, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            if (f.size > 0) Text(fmtSize(f.size), color = T3, fontSize = 9.sp)
+                        }
+                    }
+                }
+            }
+        }
+
+        if (tp > 1) Row(Modifier.fillMaxWidth().background(CARD).padding(4.dp),
+            horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+            PgBtn("«") { onPageChange(0) }; PgBtn("‹") { onPageChange((cp-1).coerceAtLeast(0)) }
+            Text(" ${cp+1}/$tp ", color = T1, fontSize = 12.sp)
+            PgBtn("›") { onPageChange((cp+1).coerceAtMost(tp-1)) }; PgBtn("»") { onPageChange(tp-1) }
+        }
+    }
+}
+
+// ========== 滑动选择行（类似 MT 管理器） ==========
+@Composable
+fun SwipeSelectRow(
+    selected: Boolean,
+    onSelect: () -> Unit,
+    onTap: () -> Unit,
+    onLongPress: () -> Unit,
+    content: @Composable () -> Unit
+) {
+    var offsetX by remember { mutableStateOf(0f) }
+
+    Box(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(6.dp))
+            .background(if (selected) SEL_BG else Color.Transparent)
+            .pointerInput(Unit) {
+                awaitPointerEventScope {
+                    while (true) {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        val sX = down.position.x; val sY = down.position.y; val sT = System.currentTimeMillis()
+                        var eX = sX; var eY = sY; var moved = false
+
+                        while (true) {
+                            val ev = awaitPointerEvent()
+                            val c = ev.changes.firstOrNull() ?: break
+                            eX = c.position.x; eY = c.position.y
+                            if (kotlin.math.abs(eX - sX) > 15 || kotlin.math.abs(eY - sY) > 15) moved = true
+                            if (!c.pressed) break
+                        }
+
+                        val dx = eX - sX; val dt = System.currentTimeMillis() - sT
+
+                        if (kotlin.math.abs(dx) > 60 && kotlin.math.abs(dx) > kotlin.math.abs(eY - sY) * 2) {
+                            // 左右滑动 → 选中/取消
+                            onSelect()
+                        } else if (!moved && dt > 500) {
+                            // 长按 → 重命名
+                            onLongPress()
+                        } else if (!moved && dt < 300) {
+                            // 短按 → 导航或切换选中
+                            onTap()
+                        }
+                    }
+                }
+            }
+    ) { content() }
+}
+
+// ========== WebDAV 三种视图（带滑动选择） ==========
+@Composable
+fun DavGridView(folders: List<DavItem>, files: List<DavItem>, p: Int, s: Settings,
+    sel: Set<String>, onNav: (DavItem) -> Unit, onSel: (Set<String>) -> Unit, onRename: (DavItem) -> Unit) {
+    LazyVerticalGrid(GridCells.Fixed(3), Modifier.fillMaxSize().padding(4.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        if (p == 0) folders.forEach { f -> item(span = { GridItemSpan(3) }) {
+            SwipeSelectRow(sel.contains(f.href), { onSel(if (sel.contains(f.href)) sel-f.href else sel+f.href) },
+                { if (sel.isNotEmpty()) onSel(if (sel.contains(f.href)) sel-f.href else sel+f.href) else onNav(f) },
+                { onRename(f) }) { FolderRow(f) }
+        }}
+        items(files.size) { i -> val it = files[i]
+            Box(Modifier.then(if (sel.contains(it.href)) Modifier.border(2.dp, ACC, RoundedCornerShape(10.dp)) else Modifier)) {
+                FileGridCell(it, s, sel.isNotEmpty(),
+                    { if (sel.isNotEmpty()) onSel(if (sel.contains(it.href)) sel-it.href else sel+it.href) else onNav(it) },
+                    { onSel(if (sel.contains(it.href)) sel-it.href else sel+it.href) },
+                    { onRename(it) })
+            }
+        }
+    }
+}
+
+@Composable
+fun DavListView(folders: List<DavItem>, files: List<DavItem>, p: Int, s: Settings,
+    sel: Set<String>, onNav: (DavItem) -> Unit, onSel: (Set<String>) -> Unit, onRename: (DavItem) -> Unit) {
+    LazyColumn(Modifier.fillMaxSize().padding(4.dp), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+        if (p == 0) items(folders.size) { val f = folders[it]
+            SwipeSelectRow(sel.contains(f.href), { onSel(if (sel.contains(f.href)) sel-f.href else sel+f.href) },
+                { if (sel.isNotEmpty()) onSel(if (sel.contains(f.href)) sel-f.href else sel+f.href) else onNav(f) },
+                { onRename(f) }) { FolderRow(f) }
+        }
+        items(files.size) { val f = files[it]
+            SwipeSelectRow(sel.contains(f.href), { onSel(if (sel.contains(f.href)) sel-f.href else sel+f.href) },
+                { if (sel.isNotEmpty()) onSel(if (sel.contains(f.href)) sel-f.href else sel+f.href) else onNav(f) },
+                { onRename(f) }) { FileListRow(f, s) }
+        }
+    }
+}
+
+@Composable
+fun DavWaterfallView(folders: List<DavItem>, files: List<DavItem>, p: Int, s: Settings,
+    sel: Set<String>, onNav: (DavItem) -> Unit, onSel: (Set<String>) -> Unit, onRename: (DavItem) -> Unit) {
+    LazyVerticalStaggeredGrid(StaggeredGridCells.Fixed(2), Modifier.fillMaxSize().padding(4.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp), verticalItemSpacing = 4.dp) {
+        if (p == 0) folders.forEach { f -> item(span = StaggeredGridItemSpan.FullLine) {
+            SwipeSelectRow(sel.contains(f.href), { onSel(if (sel.contains(f.href)) sel-f.href else sel+f.href) },
+                { if (sel.isNotEmpty()) onSel(if (sel.contains(f.href)) sel-f.href else sel+f.href) else onNav(f) },
+                { onRename(f) }) { FolderRow(f) }
+        }}
+        items(files.size) { val f = files[it]
+            Box(Modifier.then(if (sel.contains(f.href)) Modifier.border(2.dp, ACC, RoundedCornerShape(10.dp)) else Modifier)) {
+                WaterfallCell(f, s, sel.isNotEmpty(),
+                    { if (sel.isNotEmpty()) onSel(if (sel.contains(f.href)) sel-f.href else sel+f.href) else onNav(f) },
+                    { onSel(if (sel.contains(f.href)) sel-f.href else sel+f.href) },
+                    { onRename(f) })
+            }
+        }
+    }
+}
+
+// ========== 文件格子 ==========
+@Composable
+fun FileGridCell(item: DavItem, s: Settings, hasSel: Boolean, onClick: () -> Unit, onSwipeSel: () -> Unit, onLong: () -> Unit) {
+    val a = if (item.isHidden) 0.4f else 1f
+    Box(Modifier.aspectRatio(1f).clip(RoundedCornerShape(10.dp)).background(CARD).graphicsLayer(alpha = a)
+        .pointerInput(Unit) {
+            awaitPointerEventScope { while (true) {
+                val d = awaitFirstDown(false); val sx = d.position.x; val sy = d.position.y; val st = System.currentTimeMillis()
+                var ex = sx; var ey = sy; var mv = false
+                while (true) { val ev = awaitPointerEvent(); val c = ev.changes.firstOrNull() ?: break
+                    ex = c.position.x; ey = c.position.y; if (kotlin.math.abs(ex-sx)>15||kotlin.math.abs(ey-sy)>15) mv = true; if (!c.pressed) break }
+                val dx = ex-sx; val dt = System.currentTimeMillis()-st
+                if (kotlin.math.abs(dx)>50&&kotlin.math.abs(dx)>kotlin.math.abs(ey-sy)*2) onSwipeSel()
+                else if (!mv&&dt>500) onLong()
+                else if (!mv&&dt<300) onClick()
+            }}
+        }
+    ) {
+        if (item.isImage) AsyncImage(model = s.serverUrl.trimEnd('/')+"/"+item.href.trimStart('/'),
+            contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+        else Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text(item.fileIcon, fontSize = 28.sp) }
+        if (item.size>0) Text(fmtSize(item.size), fontSize = 8.sp, color = T2,
+            modifier = Modifier.align(Alignment.TopStart).background(Color(0xCC0D1117), RoundedCornerShape(0.dp,0.dp,6.dp,0.dp)).padding(2.dp))
+        Text(item.name, fontSize = 9.sp, color = T1, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color(0xCC0D1117)).padding(3.dp))
+    }
+}
+
+@Composable
+fun FileListRow(item: DavItem, s: Settings) {
+    val a = if (item.isHidden) 0.4f else 1f
+    Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 5.dp).graphicsLayer(alpha = a),
+        verticalAlignment = Alignment.CenterVertically) {
+        if (item.isImage) AsyncImage(model = s.serverUrl.trimEnd('/')+"/"+item.href.trimStart('/'),
+            contentDescription = null, contentScale = ContentScale.Crop,
+            modifier = Modifier.size(40.dp).clip(RoundedCornerShape(6.dp)))
+        else Box(Modifier.size(40.dp).clip(RoundedCornerShape(6.dp)).background(CARD2),
+            contentAlignment = Alignment.Center) { Text(item.fileIcon, fontSize = 18.sp) }
+        Spacer(Modifier.width(8.dp))
+        Column(Modifier.weight(1f)) {
+            Text(item.name, color = T1, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(".${item.ext}", color = ACC, fontSize = 10.sp)
+                if (item.size>0) Text(fmtSize(item.size), color = T2, fontSize = 10.sp)
+            }
+        }
+    }
+}
+
+@Composable
+fun WaterfallCell(item: DavItem, s: Settings, hasSel: Boolean, onClick: () -> Unit, onSwipeSel: () -> Unit, onLong: () -> Unit) {
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(CARD)
+        .graphicsLayer(alpha = if (item.isHidden) 0.4f else 1f)
+        .pointerInput(Unit) {
+            awaitPointerEventScope { while (true) {
+                val d = awaitFirstDown(false); val sx = d.position.x; val sy = d.position.y; val st = System.currentTimeMillis()
+                var ex = sx; var ey = sy; var mv = false
+                while (true) { val ev = awaitPointerEvent(); val c = ev.changes.firstOrNull() ?: break
+                    ex = c.position.x; ey = c.position.y; if (kotlin.math.abs(ex-sx)>15||kotlin.math.abs(ey-sy)>15) mv = true; if (!c.pressed) break }
+                val dx = ex-sx; val dt = System.currentTimeMillis()-st
+                if (kotlin.math.abs(dx)>50&&kotlin.math.abs(dx)>kotlin.math.abs(ey-sy)*2) onSwipeSel()
+                else if (!mv&&dt>500) onLong()
+                else if (!mv&&dt<300) onClick()
+            }}
+        }
+    ) {
+        if (item.isImage) AsyncImage(model = s.serverUrl.trimEnd('/')+"/"+item.href.trimStart('/'),
+            contentDescription = null, contentScale = ContentScale.FillWidth,
+            modifier = Modifier.fillMaxWidth().heightIn(min = 80.dp, max = 400.dp))
+        else Box(Modifier.fillMaxWidth().height(80.dp).background(CARD2), contentAlignment = Alignment.Center) {
+            Text(item.fileIcon, fontSize = 30.sp) }
+        Column(Modifier.padding(5.dp)) {
+            Text(item.name, color = T1, fontSize = 10.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            if (item.size>0) Text(fmtSize(item.size), color = T2, fontSize = 9.sp) }
+    }
+}
+
+@Composable
+fun FolderRow(item: DavItem) {
+    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(CARD2).padding(10.dp),
+        verticalAlignment = Alignment.CenterVertically) {
+        Text("📁", fontSize = 18.sp, modifier = Modifier.graphicsLayer(alpha = if (item.isHidden) 0.4f else 1f))
+        Spacer(Modifier.width(8.dp))
+        Text(item.name, color = if (item.isHidden) T3 else T1, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+@Composable fun PgBtn(t: String, onClick: () -> Unit) {
+    Text(t, fontSize = 16.sp, color = T1, modifier = Modifier.clip(RoundedCornerShape(6.dp))
+        .background(CARD2).clickable { onClick() }.padding(horizontal = 10.dp, vertical = 3.dp))
+}
+
+// ========== 登录页（紧凑版） ==========
 @Composable
 fun LoginPage(s: Settings, onConnect: () -> Unit) {
-    var url by remember {
-        val init = s.serverUrl.ifBlank { "http://" }
-        mutableStateOf(TextFieldValue(init, selection = TextRange(init.length)))
-    }
+    var url by remember { val init = s.serverUrl.ifBlank { "http://" }
+        mutableStateOf(TextFieldValue(init, selection = TextRange(init.length))) }
     var user by remember { mutableStateOf(s.username) }
     var pass by remember { mutableStateOf(s.password) }
     var cd by remember { mutableStateOf(s.confirmDelete) }
@@ -268,702 +705,194 @@ fun LoginPage(s: Settings, onConnect: () -> Unit) {
     var sh by remember { mutableStateOf(s.showHidden) }
     var vm by remember { mutableStateOf(s.viewMode) }
 
-    Column(
-        Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(GRADIENT_TOP, GRADIENT_BOT)))
-            .padding(24.dp).verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.Center
-    ) {
-        Text("🌐", fontSize = 40.sp, modifier = Modifier.align(Alignment.CenterHorizontally))
-        Text("WebDAV 浏览器", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = TEXT1,
-            modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = 8.dp, bottom = 24.dp))
+    Column(Modifier.fillMaxSize().background(BG).padding(20.dp).verticalScroll(rememberScrollState())) {
+        Text("🌐 WebDAV", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = T1)
+        Spacer(Modifier.height(12.dp))
 
-        SectionCard("连接") {
-            OutlinedTextField(url, { url = it }, label = { Text("服务器地址") },
-                modifier = Modifier.fillMaxWidth(), singleLine = true,
-                placeholder = { Text("http://192.168.1.100:5000") },
-                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = ACCENT))
-            Spacer(Modifier.height(8.dp))
-            OutlinedTextField(user, { user = it }, label = { Text("用户名（可空）") },
-                modifier = Modifier.fillMaxWidth(), singleLine = true,
-                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = ACCENT))
-            Spacer(Modifier.height(8.dp))
-            OutlinedTextField(pass, { pass = it }, label = { Text("密码（可空）") },
-                modifier = Modifier.fillMaxWidth(), singleLine = true,
-                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = ACCENT))
+        OutlinedTextField(url, { url = it }, label = { Text("服务器地址", fontSize = 12.sp) },
+            modifier = Modifier.fillMaxWidth().height(54.dp), singleLine = true,
+            colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = ACC),
+            textStyle = LocalTextStyle.current.copy(fontSize = 14.sp))
+        Spacer(Modifier.height(6.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            OutlinedTextField(user, { user = it }, label = { Text("用户名", fontSize = 11.sp) },
+                modifier = Modifier.weight(1f).height(52.dp), singleLine = true,
+                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = ACC),
+                textStyle = LocalTextStyle.current.copy(fontSize = 13.sp))
+            OutlinedTextField(pass, { pass = it }, label = { Text("密码", fontSize = 11.sp) },
+                modifier = Modifier.weight(1f).height(52.dp), singleLine = true,
+                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = ACC),
+                textStyle = LocalTextStyle.current.copy(fontSize = 13.sp))
         }
 
-        SectionCard("显示") {
-            Label("每页数量")
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                listOf(20, 50, 100, 200).forEach { n ->
-                    Pill("$n", ps == n) { ps = n }
-                }
-            }
-            Spacer(Modifier.height(8.dp))
-            Label("默认视图")
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                listOf("grid" to "网格", "list" to "列表", "waterfall" to "瀑布").forEach { (v, l) ->
-                    Pill(l, vm == v) { vm = v }
-                }
-            }
-            Spacer(Modifier.height(8.dp))
-            SettingRow("显示隐藏文件", sh) { sh = it }
-        }
-
-        SectionCard("删除") {
-            SettingRow("删除前确认", cd) { cd = it }
-            Spacer(Modifier.height(8.dp))
-            Label("删除按钮位置")
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                listOf("top-left" to "↖左上", "top-right" to "↗右上",
-                    "bottom-left" to "↙左下", "bottom-right" to "↘右下").forEach { (v, l) ->
-                    Pill(l, dp == v, DANGER) { dp = v }
-                }
-            }
-        }
-
-        Spacer(Modifier.height(20.dp))
+        Spacer(Modifier.height(12.dp))
         Button(onClick = {
             s.serverUrl = url.text.trimEnd('/'); s.username = user; s.password = pass
             s.confirmDelete = cd; s.deleteButtonPos = dp; s.pageSize = ps; s.showHidden = sh; s.viewMode = vm
             onConnect()
-        }, modifier = Modifier.fillMaxWidth().height(50.dp),
-            shape = RoundedCornerShape(14.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = ACCENT)) {
-            Text("连接", fontSize = 17.sp, fontWeight = FontWeight.Bold)
+        }, modifier = Modifier.fillMaxWidth().height(44.dp), shape = RoundedCornerShape(12.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = ACC)) {
+            Text("连接", fontSize = 15.sp, fontWeight = FontWeight.Bold) }
+
+        Spacer(Modifier.height(16.dp))
+        // 设置区（紧凑）
+        Text("设置", color = T2, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(6.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("每页", color = T2, fontSize = 12.sp)
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                listOf(20,50,100,200).forEach { Pill("$it", ps==it) { ps = it } } }
         }
-    }
-}
-
-@Composable
-fun SectionCard(title: String, content: @Composable ColumnScope.() -> Unit) {
-    Spacer(Modifier.height(14.dp))
-    Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
-            .background(CARD).padding(16.dp)
-    ) {
-        Text(title, color = ACCENT, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(10.dp))
-        content()
-    }
-}
-
-@Composable
-fun Label(t: String) { Text(t, color = TEXT2, fontSize = 12.sp, modifier = Modifier.padding(bottom = 4.dp)) }
-
-@Composable
-fun SettingRow(label: String, value: Boolean, onChange: (Boolean) -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(label, color = TEXT1, fontSize = 14.sp); Spacer(Modifier.weight(1f))
-        Switch(value, onChange, colors = SwitchDefaults.colors(checkedThumbColor = ACCENT, checkedTrackColor = ACCENT.copy(alpha = 0.3f)))
-    }
-}
-
-// ========== 浏览页（美化版） ==========
-@Composable
-fun BrowserPage(
-    allItems: List<DavItem>, allMedia: List<DavItem>, path: String,
-    sortBy: String, sortAsc: Boolean, page: Int, settings: Settings,
-    onNav: (DavItem) -> Unit, onUp: () -> Unit, onHome: () -> Unit,
-    onSort: (String) -> Unit, onToggle: () -> Unit, onSettings: () -> Unit,
-    onTrash: () -> Unit, onSplit: () -> Unit, onPageChange: (Int) -> Unit
-) {
-    var viewMode by remember { mutableStateOf(settings.viewMode) }
-    val pageSize = settings.pageSize
-    val folders = allItems.filter { it.isDir }
-    val files = allItems.filter { !it.isDir }
-    val totalPages = ((files.size + pageSize - 1) / pageSize).coerceAtLeast(1)
-    val curPage = page.coerceIn(0, totalPages - 1)
-    val pageFiles = files.drop(curPage * pageSize).take(pageSize)
-
-    Column(Modifier.fillMaxSize().background(BG)) {
-        // 顶栏
-        GradientBar {
-            ActionBtn("⬆") { onUp() }; ActionBtn("🏠") { onHome() }
-            Text(path, color = TEXT2, fontSize = 11.sp, maxLines = 1,
-                overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).padding(horizontal = 8.dp))
-            ActionBtn(when (viewMode) { "list" -> "☰"; "waterfall" -> "▥"; else -> "▦" }) {
-                viewMode = when (viewMode) { "grid" -> "list"; "list" -> "waterfall"; else -> "grid" }
-                settings.viewMode = viewMode
-            }
-            ActionBtn("📂", "分栏") { onSplit() }
-            ActionBtn("♻") { onTrash() }
-            ActionBtn("⚙") { onSettings() }
+        Spacer(Modifier.height(4.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("视图", color = T2, fontSize = 12.sp)
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                listOf("grid" to "网格","list" to "列表","waterfall" to "瀑布").forEach { (v,l) -> Pill(l, vm==v) { vm = v } } }
         }
-
-        // 排序栏
-        Row(Modifier.fillMaxWidth().background(CARD).padding(horizontal = 8.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            listOf("name" to "名称", "ext" to "后缀", "size" to "大小", "date" to "日期").forEach { (k, l) ->
-                Pill(l, sortBy == k) { onSort(k) }
-            }
-            Pill(if (sortAsc) "↑升" else "↓降") { onToggle() }
+        Spacer(Modifier.height(4.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("隐藏文件", color = T2, fontSize = 12.sp); Spacer(Modifier.weight(1f))
+            Switch(sh, { sh = it }, Modifier.height(28.dp), colors = SwitchDefaults.colors(checkedThumbColor = ACC, checkedTrackColor = ACC.copy(0.3f)))
         }
-
-        // 统计
-        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 3.dp),
-            horizontalArrangement = Arrangement.SpaceBetween) {
-            Text("${folders.size}文件夹  ${files.size}文件", color = TEXT3, fontSize = 10.sp)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("删除确认", color = T2, fontSize = 12.sp); Spacer(Modifier.weight(1f))
+            Switch(cd, { cd = it }, Modifier.height(28.dp), colors = SwitchDefaults.colors(checkedThumbColor = DNG, checkedTrackColor = DNG.copy(0.3f)))
         }
-
-        // 内容
-        Box(Modifier.weight(1f)) {
-            when (viewMode) {
-                "list" -> ListView(folders, pageFiles, curPage, settings, onNav)
-                "waterfall" -> WaterfallView(folders, pageFiles, curPage, settings, onNav)
-                else -> GridView(folders, pageFiles, curPage, settings, onNav)
-            }
-        }
-
-        // 分页
-        if (totalPages > 1) {
-            Row(Modifier.fillMaxWidth().background(CARD).padding(6.dp),
-                horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                PBtn("◀◀") { onPageChange(0) }; Spacer(Modifier.width(6.dp))
-                PBtn("◀") { onPageChange((curPage - 1).coerceAtLeast(0)) }; Spacer(Modifier.width(10.dp))
-                Text("${curPage + 1}/$totalPages", color = TEXT1, fontSize = 13.sp); Spacer(Modifier.width(10.dp))
-                PBtn("▶") { onPageChange((curPage + 1).coerceAtMost(totalPages - 1)) }; Spacer(Modifier.width(6.dp))
-                PBtn("▶▶") { onPageChange(totalPages - 1) }
-            }
-        }
-    }
-}
-
-// ===== 三种视图 =====
-@Composable
-fun GridView(folders: List<DavItem>, files: List<DavItem>, p: Int, s: Settings, onNav: (DavItem) -> Unit) {
-    LazyVerticalGrid(GridCells.Fixed(3), Modifier.fillMaxSize().padding(6.dp),
-        horizontalArrangement = Arrangement.spacedBy(5.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-        if (p == 0) folders.forEach { f -> item(span = { GridItemSpan(3) }) { FolderRow(f) { onNav(f) } } }
-        items(files.size) { i -> FileGridCell(files[i], s) { onNav(files[i]) } }
-    }
-}
-
-@Composable
-fun ListView(folders: List<DavItem>, files: List<DavItem>, p: Int, s: Settings, onNav: (DavItem) -> Unit) {
-    LazyColumn(Modifier.fillMaxSize().padding(6.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        if (p == 0) items(folders.size) { FolderRow(folders[it]) { onNav(folders[it]) } }
-        items(files.size) { FileListRow(files[it], s) { onNav(files[it]) } }
-    }
-}
-
-@Composable
-fun WaterfallView(folders: List<DavItem>, files: List<DavItem>, p: Int, s: Settings, onNav: (DavItem) -> Unit) {
-    LazyVerticalStaggeredGrid(StaggeredGridCells.Fixed(2), Modifier.fillMaxSize().padding(6.dp),
-        horizontalArrangement = Arrangement.spacedBy(5.dp), verticalItemSpacing = 5.dp) {
-        if (p == 0) folders.forEach { f -> item(span = StaggeredGridItemSpan.FullLine) { FolderRow(f) { onNav(f) } } }
-        items(files.size) { WaterfallCell(files[it], s) { onNav(files[it]) } }
-    }
-}
-
-@Composable
-fun FolderRow(item: DavItem, onClick: () -> Unit) {
-    val a = if (item.isHidden) 0.45f else 1f
-    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(CARD_LIGHT)
-        .clickable { onClick() }.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text("📁", fontSize = 20.sp, modifier = Modifier.graphicsLayer(alpha = a))
-        Spacer(Modifier.width(10.dp))
-        Text(item.name, color = TEXT1.copy(alpha = a), fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-    }
-}
-
-@Composable
-fun FileGridCell(item: DavItem, s: Settings, onClick: () -> Unit) {
-    val a = if (item.isHidden) 0.4f else 1f
-    Box(Modifier.aspectRatio(1f).clip(RoundedCornerShape(10.dp)).background(CARD).clickable { onClick() }.graphicsLayer(alpha = a)) {
-        if (item.isImage) AsyncImage(model = s.serverUrl.trimEnd('/') + "/" + item.href.trimStart('/'),
-            contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-        else Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text(item.fileIcon, fontSize = 28.sp) }
-        if (item.size > 0) Text(fmtSize(item.size), fontSize = 8.sp, color = TEXT2,
-            modifier = Modifier.align(Alignment.TopStart).background(Color(0xCC0D1117), RoundedCornerShape(0.dp,0.dp,6.dp,0.dp)).padding(3.dp))
-        Text(item.name, fontSize = 9.sp, color = TEXT1, maxLines = 1, overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color(0xCC0D1117)).padding(3.dp))
-    }
-}
-
-@Composable
-fun FileListRow(item: DavItem, s: Settings, onClick: () -> Unit) {
-    val a = if (item.isHidden) 0.4f else 1f
-    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(CARD)
-        .clickable { onClick() }.padding(horizontal = 12.dp, vertical = 8.dp).graphicsLayer(alpha = a),
-        verticalAlignment = Alignment.CenterVertically) {
-        if (item.isImage) AsyncImage(model = s.serverUrl.trimEnd('/') + "/" + item.href.trimStart('/'),
-            contentDescription = null, contentScale = ContentScale.Crop,
-            modifier = Modifier.size(42.dp).clip(RoundedCornerShape(6.dp)))
-        else Box(Modifier.size(42.dp).clip(RoundedCornerShape(6.dp)).background(CARD_LIGHT),
-            contentAlignment = Alignment.Center) { Text(item.fileIcon, fontSize = 20.sp) }
-        Spacer(Modifier.width(10.dp))
-        Column(Modifier.weight(1f)) {
-            Text(item.name, color = TEXT1, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(".${item.ext}", color = ACCENT, fontSize = 10.sp)
-                if (item.size > 0) Text(fmtSize(item.size), color = TEXT2, fontSize = 10.sp)
-            }
-        }
-    }
-}
-
-@Composable
-fun WaterfallCell(item: DavItem, s: Settings, onClick: () -> Unit) {
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(CARD).clickable { onClick() }
-        .graphicsLayer(alpha = if (item.isHidden) 0.4f else 1f)) {
-        if (item.isImage) AsyncImage(model = s.serverUrl.trimEnd('/') + "/" + item.href.trimStart('/'),
-            contentDescription = null, contentScale = ContentScale.FillWidth,
-            modifier = Modifier.fillMaxWidth().heightIn(min = 80.dp, max = 400.dp))
-        else Box(Modifier.fillMaxWidth().height(90.dp).background(CARD_LIGHT), contentAlignment = Alignment.Center) {
-            Text(item.fileIcon, fontSize = 32.sp) }
-        Column(Modifier.padding(6.dp)) {
-            Text(item.name, color = TEXT1, fontSize = 10.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            if (item.size > 0) Text(fmtSize(item.size), color = TEXT2, fontSize = 9.sp)
-        }
-    }
-}
-
-@Composable fun PBtn(t: String, onClick: () -> Unit) {
-    Text(t, fontSize = 14.sp, color = TEXT1, modifier = Modifier.clip(RoundedCornerShape(6.dp))
-        .background(CARD_LIGHT).clickable { onClick() }.padding(horizontal = 12.dp, vertical = 5.dp))
-}
-
-// ========== 分栏文件管理 ==========
-@Composable
-fun SplitPage(client: WebDavClient, settings: Settings, onBack: () -> Unit) {
-    val localClient = remember { LocalFileClient() }
-    val ctx = LocalContext.current
-    val scope = rememberCoroutineScope()
-
-    // 左栏：手机本地
-    var localPath by remember { mutableStateOf(localClient.getDefaultRoot()) }
-    var localFiles by remember { mutableStateOf<List<LocalFile>>(emptyList()) }
-    var localSelected by remember { mutableStateOf<Set<String>>(emptySet()) }
-
-    // 右栏：WebDAV
-    var davPath by remember { mutableStateOf("/") }
-    var davFiles by remember { mutableStateOf<List<DavItem>>(emptyList()) }
-    var davSelected by remember { mutableStateOf<Set<String>>(emptySet()) }
-
-    var busy by remember { mutableStateOf(false) }
-    var busyMsg by remember { mutableStateOf("") }
-
-    // 重命名
-    var renameTarget by remember { mutableStateOf<Any?>(null) }
-    var renameText by remember { mutableStateOf("") }
-
-    fun loadLocal() { localFiles = localClient.listDir(localPath, settings.showHidden); localSelected = emptySet() }
-    fun loadDav() { scope.launch(Dispatchers.IO) {
-        val r = client.listDir(davPath).filter { !it.isTrash && (settings.showHidden || !it.isHidden) }
-        withContext(Dispatchers.Main) { davFiles = r; davSelected = emptySet() }
-    }}
-
-    LaunchedEffect(Unit) { loadLocal(); loadDav() }
-
-    // 传输操作
-    fun copyLocalToDav() {
-        if (localSelected.isEmpty()) return; busy = true
-        scope.launch(Dispatchers.IO) {
-            var ok = 0; var fail = 0
-            localSelected.forEach { path ->
-                val name = path.substringAfterLast('/')
-                busyMsg = "上传 $name..."
-                val data = localClient.readBytes(path)
-                if (data != null && client.uploadBytes("$davPath$name", data)) ok++ else fail++
-            }
-            withContext(Dispatchers.Main) {
-                Toast.makeText(ctx, "上传完成：${ok}成功 ${fail}失败", Toast.LENGTH_SHORT).show()
-                busy = false; busyMsg = ""; loadDav()
-            }
-        }
-    }
-
-    fun copyDavToLocal() {
-        if (davSelected.isEmpty()) return; busy = true
-        scope.launch(Dispatchers.IO) {
-            var ok = 0; var fail = 0
-            davSelected.forEach { href ->
-                val name = href.trimEnd('/').substringAfterLast('/')
-                busyMsg = "下载 $name..."
-                val data = client.downloadBytes(href)
-                if (data != null && localClient.writeBytes("$localPath/$name", data)) ok++ else fail++
-            }
-            withContext(Dispatchers.Main) {
-                Toast.makeText(ctx, "下载完成：${ok}成功 ${fail}失败", Toast.LENGTH_SHORT).show()
-                busy = false; busyMsg = ""; loadLocal()
-            }
-        }
-    }
-
-    fun deleteLocalSelected() {
-        localSelected.forEach { localClient.delete(it) }
-        Toast.makeText(ctx, "已删除 ${localSelected.size} 项", Toast.LENGTH_SHORT).show()
-        loadLocal()
-    }
-
-    fun deleteDavSelected() {
-        scope.launch(Dispatchers.IO) {
-            davSelected.forEach { client.moveToTrash(it) }
-            withContext(Dispatchers.Main) {
-                Toast.makeText(ctx, "已移到回收站 ${davSelected.size} 项", Toast.LENGTH_SHORT).show()
-                loadDav()
-            }
-        }
-    }
-
-    // 重命名弹窗
-    if (renameTarget != null) {
-        AlertDialog(
-            onDismissRequest = { renameTarget = null },
-            title = { Text("重命名") },
-            text = {
-                OutlinedTextField(renameText, { renameText = it }, singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = ACCENT))
-            },
-            confirmButton = { TextButton({
-                val target = renameTarget
-                if (target is LocalFile) {
-                    localClient.rename(target.path, renameText)
-                    loadLocal()
-                } else if (target is DavItem) {
-                    scope.launch(Dispatchers.IO) {
-                        client.davRename(target.href, renameText)
-                        withContext(Dispatchers.Main) { loadDav() }
-                    }
-                }
-                renameTarget = null
-            }) { Text("确定", color = ACCENT) }},
-            dismissButton = { TextButton({ renameTarget = null }) { Text("取消") }}
-        )
-    }
-
-    Column(Modifier.fillMaxSize().background(BG)) {
-        // 顶栏
-        GradientBar {
-            ActionBtn("✕") { onBack() }
-            Spacer(Modifier.width(8.dp))
-            Text("📱 手机  ↔  💻 电脑", color = TEXT1, fontSize = 14.sp, fontWeight = FontWeight.Bold,
-                modifier = Modifier.weight(1f))
-            if (busy) Text(busyMsg, color = ACCENT, fontSize = 11.sp)
-        }
-
-        // 分栏
-        Row(Modifier.weight(1f)) {
-            // ===== 左栏：手机 =====
-            Column(Modifier.weight(1f).background(BG)) {
-                // 路径栏
-                Row(Modifier.fillMaxWidth().background(CARD).padding(6.dp),
-                    verticalAlignment = Alignment.CenterVertically) {
-                    Text("📱", fontSize = 14.sp)
-                    Text(localPath.removePrefix(localClient.getDefaultRoot()).ifEmpty { "/" },
-                        color = TEXT2, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f).padding(horizontal = 4.dp))
-                    Text("⬆", fontSize = 14.sp, modifier = Modifier.clickable {
-                        val parent = localPath.substringBeforeLast('/')
-                        if (parent.isNotEmpty() && parent != localPath) { localPath = parent; loadLocal() }
-                    })
-                }
-
-                LazyColumn(Modifier.weight(1f).padding(horizontal = 3.dp),
-                    verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                    items(localFiles.size) { i ->
-                        val f = localFiles[i]
-                        val sel = localSelected.contains(f.path)
-                        Row(
-                            Modifier.fillMaxWidth().clip(RoundedCornerShape(6.dp))
-                                .background(if (sel) ACCENT.copy(alpha = 0.15f) else Color.Transparent)
-                                .clickable {
-                                    if (localSelected.isNotEmpty()) {
-                                        localSelected = if (sel) localSelected - f.path else localSelected + f.path
-                                    } else if (f.isDir) { localPath = f.path; loadLocal() }
-                                }
-                                .combinedClickable(
-                                    onClick = {
-                                        if (localSelected.isNotEmpty()) {
-                                            localSelected = if (sel) localSelected - f.path else localSelected + f.path
-                                        } else if (f.isDir) { localPath = f.path; loadLocal() }
-                                    },
-                                    onLongClick = {
-                                        localSelected = if (sel) localSelected - f.path else localSelected + f.path
-                                    }
-                                )
-                                .padding(horizontal = 6.dp, vertical = 5.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(f.fileIcon, fontSize = 16.sp)
-                            Spacer(Modifier.width(6.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text(f.name, color = if (f.isHidden) TEXT3 else TEXT1, fontSize = 11.sp,
-                                    maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                if (f.size > 0) Text(fmtSize(f.size), color = TEXT3, fontSize = 9.sp)
-                            }
-                            // 重命名按钮
-                            Text("✏", fontSize = 12.sp, modifier = Modifier.clickable {
-                                renameText = f.name; renameTarget = f
-                            }.padding(4.dp))
-                        }
-                    }
-                }
-
-                // 左栏选中操作栏
-                if (localSelected.isNotEmpty()) {
-                    Row(Modifier.fillMaxWidth().background(CARD_LIGHT).padding(6.dp),
-                        horizontalArrangement = Arrangement.SpaceEvenly) {
-                        ActionBtn("➡️", "上传到电脑", ACCENT) { copyLocalToDav() }
-                        ActionBtn("🗑", "删除", DANGER) { deleteLocalSelected() }
-                        ActionBtn("✕", "取消") { localSelected = emptySet() }
-                        Text("${localSelected.size}项", color = TEXT2, fontSize = 11.sp,
-                            modifier = Modifier.align(Alignment.CenterVertically))
-                    }
-                }
-            }
-
-            // 分隔线
-            Box(Modifier.width(2.dp).fillMaxHeight().background(
-                Brush.verticalGradient(listOf(ACCENT.copy(alpha = 0.3f), ACCENT2.copy(alpha = 0.3f)))))
-
-            // ===== 右栏：WebDAV =====
-            Column(Modifier.weight(1f).background(BG)) {
-                Row(Modifier.fillMaxWidth().background(CARD).padding(6.dp),
-                    verticalAlignment = Alignment.CenterVertically) {
-                    Text("💻", fontSize = 14.sp)
-                    Text(davPath, color = TEXT2, fontSize = 10.sp, maxLines = 1,
-                        overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).padding(horizontal = 4.dp))
-                    Text("⬆", fontSize = 14.sp, modifier = Modifier.clickable {
-                        if (davPath != "/") {
-                            davPath = davPath.trimEnd('/').substringBeforeLast('/').ifEmpty { "/" }
-                            if (!davPath.endsWith("/")) davPath += "/"
-                            loadDav()
-                        }
-                    })
-                }
-
-                LazyColumn(Modifier.weight(1f).padding(horizontal = 3.dp),
-                    verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                    items(davFiles.size) { i ->
-                        val f = davFiles[i]
-                        val sel = davSelected.contains(f.href)
-                        Row(
-                            Modifier.fillMaxWidth().clip(RoundedCornerShape(6.dp))
-                                .background(if (sel) ACCENT2.copy(alpha = 0.15f) else Color.Transparent)
-                                .combinedClickable(
-                                    onClick = {
-                                        if (davSelected.isNotEmpty()) {
-                                            davSelected = if (sel) davSelected - f.href else davSelected + f.href
-                                        } else if (f.isDir) { davPath = f.href; loadDav() }
-                                    },
-                                    onLongClick = {
-                                        davSelected = if (sel) davSelected - f.href else davSelected + f.href
-                                    }
-                                )
-                                .padding(horizontal = 6.dp, vertical = 5.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(f.fileIcon, fontSize = 16.sp)
-                            Spacer(Modifier.width(6.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text(f.name, color = if (f.isHidden) TEXT3 else TEXT1, fontSize = 11.sp,
-                                    maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                if (f.size > 0) Text(fmtSize(f.size), color = TEXT3, fontSize = 9.sp)
-                            }
-                            Text("✏", fontSize = 12.sp, modifier = Modifier.clickable {
-                                renameText = f.name; renameTarget = f
-                            }.padding(4.dp))
-                        }
-                    }
-                }
-
-                if (davSelected.isNotEmpty()) {
-                    Row(Modifier.fillMaxWidth().background(CARD_LIGHT).padding(6.dp),
-                        horizontalArrangement = Arrangement.SpaceEvenly) {
-                        ActionBtn("⬅️", "下载到手机", ACCENT2) { copyDavToLocal() }
-                        ActionBtn("🗑", "回收站", DANGER) { deleteDavSelected() }
-                        ActionBtn("✕", "取消") { davSelected = emptySet() }
-                        Text("${davSelected.size}项", color = TEXT2, fontSize = 11.sp,
-                            modifier = Modifier.align(Alignment.CenterVertically))
-                    }
-                }
-            }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("删除按钮", color = T2, fontSize = 12.sp)
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                listOf("top-left" to "左上","top-right" to "右上","bottom-left" to "左下","bottom-right" to "右下").forEach { (v,l) ->
+                    Pill(l, dp==v, DNG) { dp = v } } }
         }
     }
 }
 
 // ========== 全屏浏览页 ==========
 @Composable
-fun ViewerPage(
-    items: List<DavItem>, startIdx: Int, client: WebDavClient, settings: Settings,
-    onBack: () -> Unit, onDel: (DavItem) -> Unit
-) {
-    var idx by remember { mutableStateOf(startIdx.coerceIn(0, (items.size - 1).coerceAtLeast(0))) }
+fun ViewerPage(items: List<DavItem>, startIdx: Int, client: WebDavClient, settings: Settings,
+    onBack: () -> Unit, onDel: (DavItem) -> Unit) {
+    var idx by remember { mutableStateOf(startIdx.coerceIn(0, (items.size-1).coerceAtLeast(0))) }
     var local by remember { mutableStateOf(items.toList()) }
     var showDlg by remember { mutableStateOf(false) }
     val ctx = LocalContext.current; val scope = rememberCoroutineScope()
     var scale by remember { mutableStateOf(1f) }
-    var offsetX by remember { mutableStateOf(0f) }; var offsetY by remember { mutableStateOf(0f) }
+    var offX by remember { mutableStateOf(0f) }; var offY by remember { mutableStateOf(0f) }
     var playerRef by remember { mutableStateOf<ExoPlayer?>(null) }
-    var lastTapTime by remember { mutableStateOf(0L) }
-    LaunchedEffect(idx) { scale = 1f; offsetX = 0f; offsetY = 0f }
+    var lastTap by remember { mutableStateOf(0L) }
+    LaunchedEffect(idx) { scale = 1f; offX = 0f; offY = 0f }
     if (local.isEmpty()) { LaunchedEffect(Unit) { onBack() }; return }
-    val cur = local[idx.coerceIn(0, local.size - 1)]
+    val cur = local[idx.coerceIn(0, local.size-1)]
 
-    fun doDelete() { val d = cur; scope.launch(Dispatchers.IO) {
-        val ok = client.moveToTrash(d.href)
-        withContext(Dispatchers.Main) {
-            if (ok) { Toast.makeText(ctx, "已移到回收站", Toast.LENGTH_SHORT).show(); onDel(d)
-                local = local.filter { it.href != d.href }
-                if (local.isEmpty()) { onBack(); return@withContext }
-                if (idx >= local.size) idx = 0
-            } else Toast.makeText(ctx, "失败", Toast.LENGTH_SHORT).show()
-        }
+    fun del() { val d = cur; scope.launch(Dispatchers.IO) {
+        if (client.moveToTrash(d.href)) withContext(Dispatchers.Main) {
+            Toast.makeText(ctx, "已移到回收站", Toast.LENGTH_SHORT).show(); onDel(d)
+            local = local.filter { it.href != d.href }; if (local.isEmpty()) { onBack(); return@withContext }
+            if (idx >= local.size) idx = 0
+        } else withContext(Dispatchers.Main) { Toast.makeText(ctx, "失败", Toast.LENGTH_SHORT).show() }
     }}
-
-    fun nav(d: Int) { if (local.isNotEmpty()) idx = (idx + d + local.size) % local.size }
+    fun nav(d: Int) { if (local.isNotEmpty()) idx = (idx+d+local.size)%local.size }
 
     if (showDlg) AlertDialog(onDismissRequest = { showDlg = false },
         title = { Text("移到回收站") }, text = { Text(cur.name) },
-        confirmButton = { TextButton({ showDlg = false; doDelete() }) { Text("确定", color = DANGER) }},
+        confirmButton = { TextButton({ showDlg = false; del() }) { Text("确定", color = DNG) }},
         dismissButton = { TextButton({ showDlg = false }) { Text("取消") }})
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             if (cur.isImage) AsyncImage(model = client.fileUrl(cur.href), contentDescription = null,
-                contentScale = ContentScale.Fit,
-                modifier = Modifier.fillMaxSize().graphicsLayer(scaleX = scale, scaleY = scale,
-                    translationX = offsetX, translationY = offsetY))
-            else if (cur.isVideo) VPlayer(client.fileUrl(cur.href), client,
-                { playerRef = it }, { playerRef = null })
+                contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize()
+                    .graphicsLayer(scaleX = scale, scaleY = scale, translationX = offX, translationY = offY))
+            else if (cur.isVideo) VPlayer(client.fileUrl(cur.href), client, { playerRef = it }, { playerRef = null })
         }
 
         // 手势层
         Box(Modifier.fillMaxWidth().then(if (cur.isVideo) Modifier.fillMaxHeight(0.85f) else Modifier.fillMaxHeight())
             .pointerInput(idx, cur.isVideo, scale) {
-                awaitPointerEventScope {
-                    while (true) {
-                        val down = awaitFirstDown(requireUnconsumed = false)
-                        val sX = down.position.x; val sY = down.position.y; val sT = System.currentTimeMillis()
-                        var eX = sX; var eY = sY; var moved = false; var ptrs = 1
-                        var initDist = 0f; var initScale = scale
-
-                        while (true) {
-                            val ev = awaitPointerEvent(); val ps = ev.changes.filter { it.pressed }
-                            if (ps.isEmpty()) { ev.changes.firstOrNull()?.let { eX = it.position.x; eY = it.position.y }; break }
-                            if (ps.size >= 2 && cur.isImage) {
-                                ptrs = 2
-                                val p1 = ps[0].position; val p2 = ps[1].position
-                                val dist = kotlin.math.sqrt((p2.x-p1.x)*(p2.x-p1.x)+(p2.y-p1.y)*(p2.y-p1.y))
-                                if (initDist == 0f) { initDist = dist; initScale = scale }
-                                else if (dist > 0f) {
-                                    scale = (initScale * dist / initDist).coerceIn(1f, 5f)
-                                    if (scale > 1f) {
-                                        val mx = (ps[0].position.x+ps[1].position.x)/2
-                                        val my = (ps[0].position.y+ps[1].position.y)/2
-                                        val pmx = (ps[0].previousPosition.x+ps[1].previousPosition.x)/2
-                                        val pmy = (ps[0].previousPosition.y+ps[1].previousPosition.y)/2
-                                        offsetX += mx-pmx; offsetY += my-pmy
-                                        val mxx = (scale-1f)*size.width/2; val mxy = (scale-1f)*size.height/2
-                                        offsetX = offsetX.coerceIn(-mxx, mxx); offsetY = offsetY.coerceIn(-mxy, mxy)
-                                    } else { offsetX = 0f; offsetY = 0f }
-                                }
-                                ps.forEach { it.consume() }
-                            } else if (ps.size == 1) {
-                                val c = ps[0]; eX = c.position.x; eY = c.position.y
-                                if (scale > 1.05f && cur.isImage && ptrs == 1) {
-                                    val px = c.position.x-c.previousPosition.x; val py = c.position.y-c.previousPosition.y
-                                    if (kotlin.math.abs(px)>1||kotlin.math.abs(py)>1) {
-                                        moved = true; offsetX += px; offsetY += py
-                                        val mxx = (scale-1f)*size.width/2; val mxy = (scale-1f)*size.height/2
-                                        offsetX = offsetX.coerceIn(-mxx, mxx); offsetY = offsetY.coerceIn(-mxy, mxy)
-                                        c.consume()
-                                    }
-                                } else { if (kotlin.math.abs(eX-sX)>20||kotlin.math.abs(eY-sY)>20) moved = true }
-                            }
-                        }
-                        if (ptrs >= 2) continue
-                        val dx = eX-sX; val dy = eY-sY; val dt = System.currentTimeMillis()-sT
-                        if (scale > 1.05f && moved) continue
-                        if (kotlin.math.abs(dy)>80 && kotlin.math.abs(dy)>kotlin.math.abs(dx)*1.5f && scale<=1.05f) {
-                            if (dy > 0) nav(-1) else nav(1)
-                        } else if (!moved && dt < 300) {
-                            val now = System.currentTimeMillis()
-                            if (cur.isImage && now-lastTapTime<350) {
-                                if (scale>1.1f){scale=1f;offsetX=0f;offsetY=0f} else scale=2.5f; lastTapTime=0L
-                            } else {
-                                lastTapTime = now; val tx = sX; val tw = size.width
-                                scope.launch { delay(360)
-                                    if (lastTapTime == now) {
-                                        if (cur.isVideo) { playerRef?.let { p -> when {
-                                            tx<tw*0.35f -> p.seekTo((p.currentPosition-5000).coerceAtLeast(0))
-                                            tx>tw*0.65f -> p.seekTo((p.currentPosition+5000).coerceAtMost(p.duration))
-                                            else -> p.playWhenReady = !p.playWhenReady
-                                        }}} else if (scale<=1.05f) { if (tx<tw*0.4f) nav(-1) else if (tx>tw*0.6f) nav(1) }
-                                    }
-                                }
-                            }
+                awaitPointerEventScope { while (true) {
+                    val dn = awaitFirstDown(false); val sx = dn.position.x; val sy = dn.position.y; val st = System.currentTimeMillis()
+                    var ex = sx; var ey = sy; var mv = false; var pts = 1; var iD = 0f; var iS = scale
+                    while (true) { val ev = awaitPointerEvent(); val ps = ev.changes.filter { it.pressed }
+                        if (ps.isEmpty()) { ev.changes.firstOrNull()?.let { ex=it.position.x; ey=it.position.y }; break }
+                        if (ps.size>=2 && cur.isImage) { pts=2
+                            val p1=ps[0].position; val p2=ps[1].position
+                            val d = kotlin.math.sqrt((p2.x-p1.x)*(p2.x-p1.x)+(p2.y-p1.y)*(p2.y-p1.y))
+                            if (iD==0f){iD=d;iS=scale} else if(d>0f){scale=(iS*d/iD).coerceIn(1f,5f)
+                                if(scale>1f){val mx=(ps[0].position.x+ps[1].position.x)/2;val my=(ps[0].position.y+ps[1].position.y)/2
+                                    val px=(ps[0].previousPosition.x+ps[1].previousPosition.x)/2;val py=(ps[0].previousPosition.y+ps[1].previousPosition.y)/2
+                                    offX+=mx-px;offY+=my-py;val mxx=(scale-1f)*size.width/2;val mxy=(scale-1f)*size.height/2
+                                    offX=offX.coerceIn(-mxx,mxx);offY=offY.coerceIn(-mxy,mxy)} else{offX=0f;offY=0f}}
+                            ps.forEach{it.consume()}
+                        } else if(ps.size==1){val c=ps[0];ex=c.position.x;ey=c.position.y
+                            if(scale>1.05f&&cur.isImage&&pts==1){val px=c.position.x-c.previousPosition.x;val py=c.position.y-c.previousPosition.y
+                                if(kotlin.math.abs(px)>1||kotlin.math.abs(py)>1){mv=true;offX+=px;offY+=py
+                                    val mxx=(scale-1f)*size.width/2;val mxy=(scale-1f)*size.height/2
+                                    offX=offX.coerceIn(-mxx,mxx);offY=offY.coerceIn(-mxy,mxy);c.consume()}}
+                            else{if(kotlin.math.abs(ex-sx)>20||kotlin.math.abs(ey-sy)>20)mv=true}
                         }
                     }
-                }
+                    if(pts>=2)continue; val dx=ex-sx;val dy=ey-sy;val dt=System.currentTimeMillis()-st
+                    if(scale>1.05f&&mv)continue
+                    if(kotlin.math.abs(dy)>80&&kotlin.math.abs(dy)>kotlin.math.abs(dx)*1.5f&&scale<=1.05f){if(dy>0)nav(-1) else nav(1)}
+                    else if(!mv&&dt<300){val now=System.currentTimeMillis()
+                        if(cur.isImage&&now-lastTap<350){if(scale>1.1f){scale=1f;offX=0f;offY=0f}else scale=2.5f;lastTap=0L}
+                        else{lastTap=now;val tx=sx;val tw=size.width
+                            scope.launch{delay(360);if(lastTap==now){
+                                if(cur.isVideo){playerRef?.let{p->when{tx<tw*0.35f->p.seekTo((p.currentPosition-5000).coerceAtLeast(0))
+                                    tx>tw*0.65f->p.seekTo((p.currentPosition+5000).coerceAtMost(p.duration));else->p.playWhenReady=!p.playWhenReady}}}
+                                else if(scale<=1.05f){if(tx<tw*0.4f)nav(-1) else if(tx>tw*0.6f)nav(1)}
+                            }}
+                        }
+                    }
+                }}
             })
 
-        // 顶部信息
-        Row(Modifier.align(Alignment.TopCenter).fillMaxWidth().background(Color(0x88000000)).padding(8.dp),
+        Row(Modifier.align(Alignment.TopCenter).fillMaxWidth().background(Color(0x88000000)).padding(6.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
             Text("${idx+1}/${local.size}  ${if(cur.size>0)"(${fmtSize(cur.size)}) " else ""}${cur.name}",
-                color = Color.White, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                color = Color.White, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
 
-        Text("✕", color = Color.White, fontSize = 18.sp, modifier = Modifier.align(Alignment.TopStart)
-            .padding(8.dp).clip(CircleShape).background(Color(0x66333333)).clickable { onBack() }
-            .padding(horizontal = 14.dp, vertical = 8.dp))
+        Text("✕", color = Color.White, fontSize = 16.sp, modifier = Modifier.align(Alignment.TopStart)
+            .padding(6.dp).clip(CircleShape).background(Color(0x55333333)).clickable { onBack() }
+            .padding(horizontal = 12.dp, vertical = 6.dp))
 
-        if (scale > 1.05f) Text("${(scale*100).toInt()}%  双击复原", color = Color(0xAAFFFFFF), fontSize = 11.sp,
-            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 40.dp)
-                .background(Color(0x66000000), RoundedCornerShape(12.dp)).padding(horizontal = 10.dp, vertical = 4.dp))
+        if (scale > 1.05f) Text("${(scale*100).toInt()}%  双击复原", color = Color(0xAAFFFFFF), fontSize = 10.sp,
+            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 36.dp)
+                .background(Color(0x55000000), RoundedCornerShape(10.dp)).padding(horizontal = 8.dp, vertical = 3.dp))
 
         val al = when(settings.deleteButtonPos){"top-left"->Alignment.TopStart;"top-right"->Alignment.TopEnd
             "bottom-left"->Alignment.BottomStart;else->Alignment.BottomEnd}
-        val pd = when(settings.deleteButtonPos){"top-left"->Modifier.padding(start=8.dp,top=52.dp)
-            "top-right"->Modifier.padding(end=8.dp,top=52.dp);"bottom-left"->Modifier.padding(start=8.dp,bottom=16.dp)
-            else->Modifier.padding(end=8.dp,bottom=16.dp)}
-        Text("🗑️", color = Color.White, fontSize = 20.sp, modifier = Modifier.align(al).then(pd)
-            .clip(CircleShape).background(Color(0x99DD2222)).clickable {
-                if (settings.confirmDelete) showDlg = true else doDelete()
-            }.padding(14.dp))
-
-        if (scale <= 1.05f) {
-            val hint = if (cur.isVideo) "← → 快进退 · ↕ 切换" else "← → 切换 · ↕ 切换"
-            Text(hint, color = Color(0x55FFFFFF), fontSize = 9.sp,
-                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 14.dp))
-        }
+        val pd = when(settings.deleteButtonPos){"top-left"->Modifier.padding(start=6.dp,top=48.dp)
+            "top-right"->Modifier.padding(end=6.dp,top=48.dp);"bottom-left"->Modifier.padding(start=6.dp,bottom=12.dp)
+            else->Modifier.padding(end=6.dp,bottom=12.dp)}
+        Text("🗑", color = Color.White, fontSize = 18.sp, modifier = Modifier.align(al).then(pd)
+            .clip(CircleShape).background(Color(0x88DD2222)).clickable {
+                if (settings.confirmDelete) showDlg = true else del()
+            }.padding(12.dp))
     }
 }
 
 // ========== 视频播放器 ==========
 @Composable
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
-fun VPlayer(url: String, client: WebDavClient, onCreated: (ExoPlayer) -> Unit, onReleased: () -> Unit) {
+fun VPlayer(url: String, client: WebDavClient, onC: (ExoPlayer) -> Unit, onR: () -> Unit) {
     val ctx = LocalContext.current
-    val player = remember(url) {
-        ExoPlayer.Builder(ctx).setMediaSourceFactory(
-            DefaultMediaSourceFactory(OkHttpDataSource.Factory(client.getClient()))
-        ).build().apply { setMediaItem(MediaItem.fromUri(url)); prepare(); playWhenReady = true }
-    }
+    val p = remember(url) { ExoPlayer.Builder(ctx).setMediaSourceFactory(
+        DefaultMediaSourceFactory(OkHttpDataSource.Factory(client.getClient()))
+    ).build().apply { setMediaItem(MediaItem.fromUri(url)); prepare(); playWhenReady = true } }
     var pos by remember { mutableStateOf(0L) }; var dur by remember { mutableStateOf(0L) }
-    var seeking by remember { mutableStateOf(false) }; var seekV by remember { mutableStateOf(0f) }
-    LaunchedEffect(player) { onCreated(player); while (true) {
-        if (!seeking) { pos = player.currentPosition.coerceAtLeast(0); dur = player.duration.let { if (it<0) 0 else it } }
-        delay(500)
-    }}
-    DisposableEffect(url) { onDispose { onReleased(); player.release() } }
-
+    var sk by remember { mutableStateOf(false) }; var sv by remember { mutableStateOf(0f) }
+    LaunchedEffect(p) { onC(p); while (true) { if (!sk) { pos=p.currentPosition.coerceAtLeast(0); dur=p.duration.let{if(it<0)0 else it} }; delay(500) } }
+    DisposableEffect(url) { onDispose { onR(); p.release() } }
     Column(Modifier.fillMaxSize()) {
-        AndroidView(factory = { PlayerView(it).apply { this.player = player; useController = false } },
-            update = { it.player = player }, modifier = Modifier.fillMaxWidth().weight(1f))
-        Column(Modifier.fillMaxWidth().background(Color(0xFF111111)).padding(start = 12.dp, end = 100.dp, top = 2.dp, bottom = 4.dp)) {
-            Slider(value = if (seeking) seekV else if (dur>0) pos.toFloat()/dur.toFloat() else 0f,
-                onValueChange = { seeking = true; seekV = it },
-                onValueChangeFinished = { player.seekTo((seekV*dur).toLong()); seeking = false },
-                modifier = Modifier.fillMaxWidth().height(20.dp),
-                colors = SliderDefaults.colors(thumbColor = ACCENT, activeTrackColor = ACCENT, inactiveTrackColor = Color(0xFF333333)))
+        AndroidView({ PlayerView(it).apply { player=p; useController=false } }, { it.player=p }, Modifier.fillMaxWidth().weight(1f))
+        Column(Modifier.fillMaxWidth().background(Color(0xFF111111)).padding(start=10.dp,end=90.dp,top=2.dp,bottom=3.dp)) {
+            Slider(if(sk)sv else if(dur>0)pos.toFloat()/dur.toFloat() else 0f, { sk=true;sv=it }, Modifier.fillMaxWidth().height(18.dp),
+                onValueChangeFinished = { p.seekTo((sv*dur).toLong());sk=false },
+                colors = SliderDefaults.colors(thumbColor=ACC,activeTrackColor=ACC,inactiveTrackColor=Color(0xFF333333)))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(fmtTime(if (seeking)(seekV*dur).toLong() else pos), color = TEXT2, fontSize = 11.sp)
-                Text(fmtTime(dur), color = TEXT3, fontSize = 11.sp)
+                Text(fmtTime(if(sk)(sv*dur).toLong() else pos), color=T2, fontSize=10.sp)
+                Text(fmtTime(dur), color=T3, fontSize=10.sp)
             }
         }
     }
@@ -971,45 +900,32 @@ fun VPlayer(url: String, client: WebDavClient, onCreated: (ExoPlayer) -> Unit, o
 
 // ========== 回收站 ==========
 @Composable
-fun TrashPage(client: WebDavClient, currentPath: String, onBack: () -> Unit) {
+fun TrashPage(client: WebDavClient, curPath: String, onBack: () -> Unit) {
     var items by remember { mutableStateOf<List<TrashEntry>>(emptyList()) }
-    var loading by remember { mutableStateOf(true) }; var showDlg by remember { mutableStateOf(false) }
+    var loading by remember { mutableStateOf(true) }; var dlg by remember { mutableStateOf(false) }
     val ctx = LocalContext.current; val scope = rememberCoroutineScope()
-    fun load() { loading = true; scope.launch(Dispatchers.IO) {
-        val r = client.listTrash(currentPath); withContext(Dispatchers.Main) { items = r; loading = false }
-    }}
+    fun load() { loading=true; scope.launch(Dispatchers.IO) {
+        val r=client.listTrash(curPath); withContext(Dispatchers.Main){items=r;loading=false} }}
     LaunchedEffect(Unit) { load() }
-
-    if (showDlg) AlertDialog(onDismissRequest = { showDlg = false },
-        title = { Text("清空回收站") }, text = { Text("永久删除 ${items.size} 个文件？") },
-        confirmButton = { TextButton({ showDlg = false; scope.launch(Dispatchers.IO) {
-            client.emptyTrash(currentPath); withContext(Dispatchers.Main) {
-                Toast.makeText(ctx, "已清空", Toast.LENGTH_SHORT).show(); items = emptyList()
-            }}}) { Text("删除", color = DANGER) }},
-        dismissButton = { TextButton({ showDlg = false }) { Text("取消") }})
+    if (dlg) AlertDialog(onDismissRequest = { dlg=false }, title = { Text("清空回收站") },
+        text = { Text("永久删除 ${items.size} 个文件？") },
+        confirmButton = { TextButton({ dlg=false; scope.launch(Dispatchers.IO) { client.emptyTrash(curPath)
+            withContext(Dispatchers.Main) { Toast.makeText(ctx,"已清空",Toast.LENGTH_SHORT).show(); items=emptyList() } }}) { Text("删除",color=DNG) }},
+        dismissButton = { TextButton({ dlg=false }) { Text("取消") }})
 
     Column(Modifier.fillMaxSize().background(BG)) {
-        GradientBar {
-            ActionBtn("✕") { onBack() }; Spacer(Modifier.width(8.dp))
-            Text("♻ 回收站", color = TEXT1, fontSize = 16.sp, fontWeight = FontWeight.Bold,
-                modifier = Modifier.weight(1f))
-            ActionBtn("🔄") { load() }; Spacer(Modifier.width(4.dp))
-            if (items.isNotEmpty()) Text("清空", color = Color.White, fontSize = 13.sp,
-                modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(DANGER.copy(alpha = 0.8f))
-                    .clickable { showDlg = true }.padding(horizontal = 12.dp, vertical = 5.dp))
+        TopBar { Ico("✕","返回") { onBack() }; Spacer(Modifier.width(6.dp))
+            Text("♻ 回收站", color=T1, fontSize=15.sp, fontWeight=FontWeight.Bold, modifier=Modifier.weight(1f))
+            Ico("↻","刷新") { load() }; Spacer(Modifier.width(4.dp))
+            if (items.isNotEmpty()) Text("清空",color=Color.White,fontSize=12.sp,
+                modifier=Modifier.clip(RoundedCornerShape(8.dp)).background(DNG.copy(0.7f)).clickable{dlg=true}.padding(horizontal=10.dp,vertical=4.dp))
         }
-
-        when {
-            loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("加载中...", color = TEXT2) }
-            items.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("♻", fontSize = 48.sp); Text("回收站为空", color = TEXT2, modifier = Modifier.padding(top = 8.dp))
-                }}
-            else -> { Text("  ${items.size} 个文件", color = TEXT3, fontSize = 11.sp, modifier = Modifier.padding(8.dp))
-                LazyColumn(Modifier.fillMaxSize().padding(horizontal = 6.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                    itemsIndexed(items) { _, e -> TrashRow(e, client, ctx, scope,
-                        { items = items.filter { it.id != e.id } }, { items = items.filter { it.id != e.id } })
-                    }
+        when { loading -> Box(Modifier.fillMaxSize(),contentAlignment=Alignment.Center){Text("加载中...",color=T2)}
+            items.isEmpty() -> Box(Modifier.fillMaxSize(),contentAlignment=Alignment.Center){
+                Column(horizontalAlignment=Alignment.CenterHorizontally){Text("♻",fontSize=40.sp);Text("空",color=T2,modifier=Modifier.padding(top=6.dp))}}
+            else -> { Text("  ${items.size}个文件",color=T3,fontSize=10.sp,modifier=Modifier.padding(6.dp))
+                LazyColumn(Modifier.fillMaxSize().padding(horizontal=4.dp),verticalArrangement=Arrangement.spacedBy(2.dp)){
+                    itemsIndexed(items){_,e->TRow(e,client,ctx,scope,{items=items.filter{it.id!=e.id}},{items=items.filter{it.id!=e.id}})}
                 }
             }
         }
@@ -1017,31 +933,22 @@ fun TrashPage(client: WebDavClient, currentPath: String, onBack: () -> Unit) {
 }
 
 @Composable
-fun TrashRow(e: TrashEntry, client: WebDavClient, ctx: android.content.Context, scope: CoroutineScope,
-    onOk: () -> Unit, onDel: () -> Unit) {
+fun TRow(e: TrashEntry, cl: WebDavClient, ctx: android.content.Context, sc: CoroutineScope, onOk: ()->Unit, onDel: ()->Unit) {
     var busy by remember { mutableStateOf(false) }
-    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(CARD).padding(10.dp),
-        verticalAlignment = Alignment.CenterVertically) {
-        Text(when { e.isImage -> "🖼️"; e.isVideo -> "🎬"; else -> "📄" }, fontSize = 24.sp)
-        Spacer(Modifier.width(8.dp))
-        Column(Modifier.weight(1f)) {
-            Text(e.fileName, color = TEXT1, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Row { if (e.size>0) Text(fmtSize(e.size), color = TEXT3, fontSize = 10.sp)
-                Text("  ${e.date}", color = TEXT3, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }
-        }
-        if (busy) Text("...", color = ACCENT)
-        else {
-            Text("还原", color = ACCENT, fontSize = 12.sp, modifier = Modifier.clip(RoundedCornerShape(6.dp))
-                .background(ACCENT.copy(alpha = 0.15f)).clickable { busy = true
-                    scope.launch(Dispatchers.IO) { val (ok, msg) = client.restoreFromTrash(e)
-                        withContext(Dispatchers.Main) { Toast.makeText(ctx, msg, Toast.LENGTH_SHORT).show(); busy = false; if (ok) onOk() }
-                    }}.padding(horizontal = 10.dp, vertical = 5.dp))
-            Spacer(Modifier.width(4.dp))
-            Text("彻删", color = DANGER, fontSize = 12.sp, modifier = Modifier.clip(RoundedCornerShape(6.dp))
-                .background(DANGER.copy(alpha = 0.15f)).clickable { busy = true
-                    scope.launch(Dispatchers.IO) { client.permanentDeleteTrashEntry(e)
-                        withContext(Dispatchers.Main) { Toast.makeText(ctx, "已删除", Toast.LENGTH_SHORT).show(); busy = false; onDel() }
-                    }}.padding(horizontal = 10.dp, vertical = 5.dp))
+    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(CARD).padding(8.dp),
+        verticalAlignment=Alignment.CenterVertically) {
+        Text(when{e.isImage->"🖼️";e.isVideo->"🎬";else->"📄"},fontSize=22.sp)
+        Spacer(Modifier.width(6.dp))
+        Column(Modifier.weight(1f)) { Text(e.fileName,color=T1,fontSize=12.sp,maxLines=1,overflow=TextOverflow.Ellipsis)
+            Row{if(e.size>0)Text(fmtSize(e.size),color=T3,fontSize=9.sp); Text(" ${e.date}",color=T3,fontSize=9.sp,maxLines=1)} }
+        if(busy)Text("...",color=ACC) else {
+            Text("还原",color=ACC,fontSize=11.sp,modifier=Modifier.clip(RoundedCornerShape(6.dp)).background(ACC.copy(0.12f))
+                .clickable{busy=true;sc.launch(Dispatchers.IO){val(ok,msg)=cl.restoreFromTrash(e)
+                    withContext(Dispatchers.Main){Toast.makeText(ctx,msg,Toast.LENGTH_SHORT).show();busy=false;if(ok)onOk()}}}.padding(horizontal=8.dp,vertical=4.dp))
+            Spacer(Modifier.width(3.dp))
+            Text("彻删",color=DNG,fontSize=11.sp,modifier=Modifier.clip(RoundedCornerShape(6.dp)).background(DNG.copy(0.12f))
+                .clickable{busy=true;sc.launch(Dispatchers.IO){cl.permanentDeleteTrashEntry(e)
+                    withContext(Dispatchers.Main){Toast.makeText(ctx,"已删除",Toast.LENGTH_SHORT).show();busy=false;onDel()}}}.padding(horizontal=8.dp,vertical=4.dp))
         }
     }
 }
