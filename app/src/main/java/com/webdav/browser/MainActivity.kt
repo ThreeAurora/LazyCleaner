@@ -752,11 +752,11 @@ fun LoginPage(s: Settings, onConnect: () -> Unit) {
         Spacer(Modifier.height(4.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("隐藏文件", color = T2, fontSize = 12.sp); Spacer(Modifier.weight(1f))
-            Switch(sh, { sh = it }, Modifier.height(28.dp), colors = SwitchDefaults.colors(checkedThumbColor = ACC, checkedTrackColor = ACC.copy(0.3f)))
+            Switch(checked = sh, onCheckedChange = { sh = it }, modifier = Modifier.height(28.dp), colors = SwitchDefaults.colors(checkedThumbColor = ACC, checkedTrackColor = ACC.copy(0.3f)))
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("删除确认", color = T2, fontSize = 12.sp); Spacer(Modifier.weight(1f))
-            Switch(cd, { cd = it }, Modifier.height(28.dp), colors = SwitchDefaults.colors(checkedThumbColor = DNG, checkedTrackColor = DNG.copy(0.3f)))
+            Switch(checked = cd, onCheckedChange = { cd = it }, modifier = Modifier.height(28.dp), colors = SwitchDefaults.colors(checkedThumbColor = DNG, checkedTrackColor = DNG.copy(0.3f)))
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text("删除按钮", color = T2, fontSize = 12.sp)
